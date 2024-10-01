@@ -1,21 +1,31 @@
 // swift-tools-version: 6.0
-// The swift-tools-version declares the minimum version of Swift required to build this package.
-
 import PackageDescription
 
 let package = Package(
     name: "SQLCipher",
     products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "SQLCipher",
             targets: ["SQLCipher"]),
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
         .target(
-            name: "SQLCipher"),
-
+            name: "SQLCipher",
+            dependencies: [],
+            sources: ["sqlite3.c"],
+            publicHeadersPath: "include",
+            cSettings: [
+                .headerSearchPath("include"),
+                .unsafeFlags([
+                    "-DSQLITE_HAS_CODEC",
+                    "-DSQLITE_TEMP_STORE=3",
+                    "-DSQLCIPHER_CRYPTO_CC",
+                    "-DNDEBUG"
+                ])
+            ],
+            linkerSettings: [
+                .linkedFramework("Security")
+            ]
+        )
     ]
 )
