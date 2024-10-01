@@ -45,6 +45,9 @@ to link this to your project.
 Be aware that while SQLCipher allows distribution of their code in both free and commercial code, ensure that you properly
 credit them in your packages. I've added the same to this package - you should do this with your end-case code.
 
+Also consider buying a license for this code if your app is wildly, or even moderately or lightly successful. I'm sure 
+these folks have kids to feed like we all do!
+
 ## Community Edition Open Source License
 
 Copyright (c) 2020, ZETETIC LLC
