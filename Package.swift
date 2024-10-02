@@ -16,12 +16,6 @@ let package = Package(
             publicHeadersPath: "include",
             cSettings: [
                 .headerSearchPath("include"),
-                .unsafeFlags([
-                    "-DSQLITE_HAS_CODEC",
-                    "-DSQLITE_TEMP_STORE=3",
-                    "-DSQLCIPHER_CRYPTO_CC",
-                    "-DNDEBUG"
-                ])
             ],
             linkerSettings: [
                 .linkedFramework("Security")

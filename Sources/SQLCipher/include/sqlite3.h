@@ -41,6 +41,10 @@
 extern "C" {
 #endif
 
+#define NDEBUG
+#define SQLITE_HAS_CODEC
+#define SQLCIPHER_CRYPTO_CC
+#define SQLITE_TEMP_STORE 3
 
 /*
 ** Facilitate override of interface linkage and calling conventions.

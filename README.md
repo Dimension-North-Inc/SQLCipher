@@ -32,14 +32,6 @@ cd ../mySQLCipherSources
 
 This assumes that you'd downloaded a recent OpenSSL alongside the code for SQLCipher.
 
-### Adding This Package
-
-This package makes use of several *so-called* unsafe build flags. As result, while I tag releases in the way a normal
-Swift Package might be tagged, you can't make use of those version tags. You need to rely on an underlying commit hash
-or named branch to link this to your project. I've added named branches for releases as result of this.
-
-...sorry, I wish Apple wasn't so anal, or maybe I'm happy they are - I don't know enough to decide which...
-
 ### SQLCipher Good Citizenship
 
 Be aware that while SQLCipher allows distribution of their code in both free and commercial code, ensure that you properly
