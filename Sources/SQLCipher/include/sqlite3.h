@@ -41,9 +41,9 @@
 extern "C" {
 #endif
 
-#define NDEBUG
-#define SQLITE_HAS_CODEC
-#define SQLCIPHER_CRYPTO_CC
+#define NDEBUG 1
+#define SQLITE_HAS_CODEC 1
+#define SQLCIPHER_CRYPTO_CC 1
 #define SQLITE_TEMP_STORE 3
 
 /*
