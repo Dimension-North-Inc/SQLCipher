@@ -1,6 +1,6 @@
 //
-//  Value.swift
-//  CSQLCipher
+//  Rows.swift
+//  SQLCipher
 //
 //  Created by Mark Onyschuk on 10/15/24.
 //  Copyright © 2024 Dimension North Inc. All rights reserved.
@@ -8,6 +8,39 @@
 
 import CSQLCipher
 import Foundation
+
+/// Represents a single row in a SQLite query result, mapping column names
+/// to their respective values.
+///
+/// This struct provides subscript access by column name, returning the
+/// associated `Value` for each column in the row.
+public struct Row {
+    private var values: [String: Value]
+    
+    /// Initializes a `Row` by reading all columns from a SQLite statement.
+    ///
+    /// This initializer iterates through all columns in the specified
+    /// SQLite statement and creates a dictionary mapping column names
+    /// to `Value` instances representing the column's data.
+    ///
+    /// - Parameter statement: The SQLite statement pointer.
+    init(statement: OpaquePointer) {
+        self.values = [:]
+        for index in 0..<sqlite3_column_count(statement) {
+            let columnName = String(cString: sqlite3_column_name(statement, index))
+            values[columnName] = Value(stmt: statement, col: index)
+        }
+    }
+    
+    /// Accesses the `Value` associated with the specified column name.
+    ///
+    /// - Parameter key: The column name.
+    /// - Returns: The `Value` for the column, or `nil` if the column name
+    ///   does not exist in the row.
+    subscript(key: String) -> Value? {
+        return values[key]
+    }
+}
 
 /// Represents a value that can be stored in a SQLite database,
 /// encapsulating the common SQLite data types.
@@ -17,6 +50,9 @@ public enum Value {
     case text(String)
     case blob(Data)
     case null
+    
+    // synthetic IN statement support
+    indirect case array([Value])
     
     /// Initializes a `Value` from a column in a SQLite statement.
     ///
@@ -77,6 +113,9 @@ public enum Value {
             }
         case .null:
             result = sqlite3_bind_null(stmt, idx)
+            
+        case .array:
+            throw SQLiteError(misuse: "unexpected array binding in expression")
         }
         
         if result != SQLITE_OK {
@@ -99,41 +138,10 @@ extension Value: CustomStringConvertible {
             return "blob(\(data.count) bytes)"
         case .null:
             return "null"
+            
+        case .array(let value):
+            return "array(\(value))"
         }
-    }
-}
-
-
-/// Represents a single row in a SQLite query result, mapping column names
-/// to their respective values.
-///
-/// This struct provides subscript access by column name, returning the
-/// associated `Value` for each column in the row.
-public struct Row {
-    private var values: [String: Value]
-    
-    /// Initializes a `Row` by reading all columns from a SQLite statement.
-    ///
-    /// This initializer iterates through all columns in the specified
-    /// SQLite statement and creates a dictionary mapping column names
-    /// to `Value` instances representing the column's data.
-    ///
-    /// - Parameter statement: The SQLite statement pointer.
-    init(statement: OpaquePointer) {
-        self.values = [:]
-        for index in 0..<sqlite3_column_count(statement) {
-            let columnName = String(cString: sqlite3_column_name(statement, index))
-            values[columnName] = Value(stmt: statement, col: index)
-        }
-    }
-    
-    /// Accesses the `Value` associated with the specified column name.
-    ///
-    /// - Parameter key: The column name.
-    /// - Returns: The `Value` for the column, or `nil` if the column name
-    ///   does not exist in the row.
-    subscript(key: String) -> Value? {
-        return values[key]
     }
 }
 

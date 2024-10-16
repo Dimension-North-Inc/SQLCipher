@@ -279,13 +279,30 @@ extension Connection {
         var statement: OpaquePointer?
         var rows: [Row] = []
         
-        try queue.sync {
-            let args = values.map(\.description).joined(separator: ", ")
-            Connection.log.debug(
-                "Executing SQL query: \(sql, privacy: .public) with arguments: \(args, privacy: .public)"
-            )
+        var updatedSQL = sql
+        var expandedValues: [Value] = []
 
-            try checked(sqlite3_prepare_v2(db, sql, -1, &statement, nil))
+        try queue.sync {
+            // Expand `Value.array` items into individual positional placeholders
+            for value in values {
+                switch value {
+                case .array(let elements):
+                    // Replace the first `?` found with placeholders for each element
+                    let placeholders = elements.map { _ in "?" }.joined(separator: ", ")
+                    if let range = updatedSQL.range(of: "?") {
+                        updatedSQL.replaceSubrange(range, with: placeholders)
+                    }
+                    expandedValues.append(contentsOf: elements)
+                default:
+                    expandedValues.append(value)
+                }
+            }
+            
+            // Log the SQL with arguments
+            let args = expandedValues.map(\.description).joined(separator: ", ")
+            Connection.log.debug("Executing SQL query: \(updatedSQL, privacy: .public) with arguments: \(args, privacy: .public)")
+            
+            try checked(sqlite3_prepare_v2(db, updatedSQL, -1, &statement, nil))
             
             guard let statement else {
                 throw SQLiteError(misuse: "Failed to prepare SQL statement.")
@@ -293,8 +310,8 @@ extension Connection {
             
             defer { sqlite3_finalize(statement) }
             
-            // Bind positional values
-            for (index, value) in values.enumerated() {
+            // Bind expanded positional values
+            for (index, value) in expandedValues.enumerated() {
                 try value.bind(to: statement, at: Int32(index + 1))
             }
             
@@ -306,7 +323,7 @@ extension Connection {
         
         return rows
     }
-
+    
     /// Executes a query with named bindings and returns the result as an array of `Row`.
     ///
     /// - Parameters:
@@ -314,26 +331,50 @@ extension Connection {
     ///   - values: A dictionary mapping placeholder names to `Value` objects.
     /// - Returns: An array of `Row` objects representing the query result.
     /// - Throws: An `SQLiteError` if the query fails.
+    @discardableResult
     public func execute(_ sql: String, with values: [String: Value]) throws -> [Row] {
         var statement: OpaquePointer?
         var rows: [Row] = []
         
-        try queue.sync {
-            let args = values.map({ key , value in "\(key) = \(value)" }).joined(separator: ", ")
-            Connection.log.debug(
-                "Executing SQL query: \(sql, privacy: .public) with arguments: \(args, privacy: .public)"
-            )
+        var updatedSQL = sql
+        var expandedBindings: [String: Value] = [:]
 
-            try checked(sqlite3_prepare_v2(db, sql, -1, &statement, nil))
-            
+        try queue.sync {
+            // Process each named parameter for array expansion
+            for (key, value) in values {
+                switch value {
+                case .array(let elements):
+                    // Generate placeholders for each element in the array
+                    let expandedPlaceholders = elements.enumerated().map { "\(key)_\($0.offset)" }
+                    let placeholderString = expandedPlaceholders.map { ":\($0)" }.joined(separator: ", ")
+                    
+                    // Replace `:key` with `:key_0, :key_1, ...` in the SQL
+                    updatedSQL = updatedSQL.replacingOccurrences(of: ":\(key)", with: placeholderString)
+                    
+                    // Add each element to the expanded bindings
+                    for (index, element) in elements.enumerated() {
+                        expandedBindings["\(key)_\(index)"] = element
+                    }
+                    
+                default:
+                    expandedBindings[key] = value
+                }
+            }
+
+            // Log the SQL with arguments
+            let args = expandedBindings.map { "\($0.key) = \($0.value)" }.joined(separator: ", ")
+            Connection.log.debug("Executing SQL query: \(updatedSQL, privacy: .public) with arguments: \(args, privacy: .public)")
+
+            try checked(sqlite3_prepare_v2(db, updatedSQL, -1, &statement, nil))
+
             guard let statement else {
                 throw SQLiteError(misuse: "Failed to prepare SQL statement.")
             }
-            
+
             defer { sqlite3_finalize(statement) }
-            
-            // Bind named values
-            for (name, value) in values {
+
+            // Bind the expanded named values
+            for (name, value) in expandedBindings {
                 let index = sqlite3_bind_parameter_index(statement, ":\(name)")
                 try value.bind(to: statement, at: index)
             }
@@ -343,10 +384,9 @@ extension Connection {
                 rows.append(Row(statement: statement))
             }
         }
-        
+
         return rows
     }
-    
     /// Executes a block that has access to the `Connection` instance.
     ///
     /// This method passes the `Connection` instance itself to the closure,
@@ -360,9 +400,3 @@ extension Connection {
     }
 }
 
-/// Conformance of `Connection` to the `DB` protocol.
-///
-/// This extension allows `Connection` to be used wherever a `DB`-conforming
-/// type is required, ensuring access to the core database functionality
-/// while abstracting away details of the `Connection` type itself.
-extension Connection: DB {}

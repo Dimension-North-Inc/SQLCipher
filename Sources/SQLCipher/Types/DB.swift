@@ -79,3 +79,10 @@ public protocol DB {
     /// - Throws: An error if the query execution or parameter binding fails.
     func execute(_ sql: String, with namedValues: [String: Value]) throws -> [Row]
 }
+
+/// Conformance of `Connection` to the `DB` protocol.
+///
+/// This extension allows `Connection` to be used wherever a `DB`-conforming
+/// type is required, ensuring access to the core database functionality
+/// while abstracting away details of the `Connection` type itself.
+extension Connection: DB {}
