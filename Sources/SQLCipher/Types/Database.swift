@@ -12,7 +12,7 @@ import CSQLCipher
 /// A protocol defining the basic database operations available to database readers and writers.
 /// Conforming types provide methods for executing SQL commands and queries with both positional
 /// and named parameters.
-public protocol DB {
+public protocol Database {
     
     /// Begins a new transaction in the database.
     ///
@@ -53,6 +53,14 @@ public protocol DB {
     /// - Throws: An error if the execution of any command fails.
     func exec(_ sql: String) throws
     
+    
+    /// Executes a query without named bindings.
+    ///
+    /// - Parameter sql: A SQL query without bindings.
+    /// - Throws: An error if the execution of any command fails.
+    @discardableResult
+    func execute(_ sql: String) throws -> [Row]
+
     /// Executes a SQL query with positional parameters and returns the resulting rows.
     ///
     /// The query may include positional placeholders (`?`) which are replaced by the values
@@ -64,6 +72,7 @@ public protocol DB {
     ///   - values: An array of `Value` instances to bind to the positional placeholders.
     /// - Returns: An array of `Row` objects representing the query result set.
     /// - Throws: An error if the query execution or parameter binding fails.
+    @discardableResult
     func execute(_ sql: String, with values: [Value]) throws -> [Row]
     
     /// Executes a SQL query with named parameters and returns the resulting rows.
@@ -77,12 +86,6 @@ public protocol DB {
     ///   - namedValues: A dictionary mapping placeholder names to `Value` instances.
     /// - Returns: An array of `Row` objects representing the query result set.
     /// - Throws: An error if the query execution or parameter binding fails.
+    @discardableResult
     func execute(_ sql: String, with namedValues: [String: Value]) throws -> [Row]
 }
-
-/// Conformance of `Connection` to the `DB` protocol.
-///
-/// This extension allows `Connection` to be used wherever a `DB`-conforming
-/// type is required, ensuring access to the core database functionality
-/// while abstracting away details of the `Connection` type itself.
-extension Connection: DB {}

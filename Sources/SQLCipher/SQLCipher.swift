@@ -29,7 +29,7 @@ public final class SQLCipher {
         self.writer = try Connection(path: path, key: key, role: .writer)
         
         writer.onUpdate = {
-            [unowned self] in self.onUpdate($0)
+            [unowned self] connection in self.onUpdate(connection)
         }
     }
     
@@ -63,7 +63,7 @@ extension SQLCipher {
     /// - Parameter block: A closure that takes the writer `Connection` and performs
     ///   operations on the database. This closure may throw errors.
     /// - Throws: Rethrows any error that the block throws.
-    public func write<T>(_ block: (DB) throws -> T) rethrows -> T {
+    public func write<T>(_ block: (Database) throws -> T) rethrows -> T {
         return try writer.performTask(block)
     }
     
@@ -72,7 +72,7 @@ extension SQLCipher {
     /// - Parameter block: A closure that takes the reader `Connection` and performs
     ///   operations on the database. This closure may throw errors.
     /// - Throws: Rethrows any error that the block throws.
-    public func read<T>(_ block: (DB) throws -> T) rethrows -> T {
+    public func read<T>(_ block: (Database) throws -> T) rethrows -> T {
         return try reader.performTask(block)
     }
 }
@@ -81,9 +81,9 @@ extension SQLCipher {
 extension SQLCipher {
     
     /// Called when changes are commited to the `writer` database.
-    /// - Parameter db: the `writer` database
+    /// - Parameter connection: the `writer` connection
     /// - Returns: `SQLITE_OK` to allow the commit to occur
-    func onUpdate(_ db: Connection) -> SQLiteErrorCode {
+    func onUpdate(_ connection: Connection) -> SQLiteErrorCode {
         didUpdate.send()
         return SQLITE_OK
     }
@@ -95,7 +95,7 @@ extension SQLCipher {
     /// - Parameter block: A closure that takes the reader `Connection` and performs
     ///   operations on the database. This closure may throw errors.
     /// - Returns: An `AnyPublisher` that emits the result of the closure's execution each time `didUpdate` is triggered.
-    public func observe<T>(_ block: @escaping (DB) throws -> T) -> AnyPublisher<T, Never> {
+    public func observe<T>(_ block: @escaping (Database) throws -> T) -> AnyPublisher<T, Never> {
         didUpdate
             .map { [weak self] _ -> T? in
                 guard let self = self else { return nil }

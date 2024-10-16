@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "CSQLCipher",
+    name: "SQLCipher",
     platforms: [
         .iOS(.v15), .macOS(.v12),
     ],

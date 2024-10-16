@@ -214,7 +214,7 @@ private func rollbackHookCallback(context: UnsafeMutableRawPointer?) {
 
 // MARK: - Execution
 
-extension Connection {
+extension Connection: Database {
     /// Begins a new transaction in the database.
     ///
     /// This method initiates a transaction, grouping multiple database operations
@@ -266,7 +266,16 @@ extension Connection {
             }
         }
     }
-    
+
+    /// Executes a query without named bindings.
+    ///
+    /// - Parameter sql: A SQL query without bindings.
+    /// - Throws: An error if the execution of any command fails.
+    @discardableResult
+    public func execute(_ sql: String) throws -> [Row] {
+        try execute(sql, with: [])
+    }
+
     /// Executes a query with positional bindings and returns the result as an array of `Row`.
     ///
     /// - Parameters:
@@ -275,7 +284,7 @@ extension Connection {
     /// - Returns: An array of `Row` objects representing the query result.
     /// - Throws: An `SQLiteError` if the query fails.
     @discardableResult
-    public func execute(_ sql: String, with values: [Value] = []) throws -> [Row] {
+    public func execute(_ sql: String, with values: [Value]) throws -> [Row] {
         var statement: OpaquePointer?
         var rows: [Row] = []
         
@@ -387,6 +396,7 @@ extension Connection {
 
         return rows
     }
+        
     /// Executes a block that has access to the `Connection` instance.
     ///
     /// This method passes the `Connection` instance itself to the closure,
