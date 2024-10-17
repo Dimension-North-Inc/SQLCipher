@@ -33,7 +33,7 @@ protocol SQLCipherStores: AnyObject {
     ///   - store: The `SQLCipher` database where the state is stored.
     ///   - initial: The initial state to use if the table is empty.
     /// - Throws: An error if initialization fails.
-    init(store: SQLCipher, initial: State) throws
+    init(store: SQLCipher, initial: State)
 }
 
 extension SQLCipherStores {
@@ -52,13 +52,13 @@ extension SQLCipherStores {
     ///
     /// - Parameter work: A closure that performs updates on the database and
     ///   modifies the state.
-    public func update(_ work: (Database, inout State) throws -> Void) {
+    public func update(_ work: (Database, inout State) -> Void) {
         do {
             try cipher.write { db in
                 try db.begin()
                 
                 var tempState = state
-                try work(db, &tempState)
+                work(db, &tempState)
                 
                 if tempState != state {
                     try saveState(tempState, using: db)
@@ -85,39 +85,46 @@ extension SQLCipherStores {
     /// - Parameter initial: The state to initialize if no data exists.
     /// - Returns: The current state after loading or initialization.
     /// - Throws: An error if table creation or state loading fails.
-    public func initialize(initial: State) throws -> State {
-        return try cipher.write { db in
-            let createTableSQL = """
-            CREATE TABLE IF NOT EXISTS \(table) (
-                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                data BLOB NOT NULL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE INDEX IF NOT EXISTS idx_\(table)_timestamp ON \(table)(timestamp);
-            """
-            
-            try db.exec(createTableSQL)
-            
-            let countSQL = "SELECT COUNT(*) AS count FROM \(table);"
-            let result = try db.execute(countSQL, with: [])
-            let count = result.first?["count"]?.numberValue ?? 0
-            
-            if count == 0 {
-                try saveState(initial, using: db)
-                return initial
-            } else {
-                let fetchSQL = """
-                SELECT data FROM \(table)
-                ORDER BY timestamp DESC
-                LIMIT 1;
+    public func initialize(initial: State) -> State {
+        return cipher.write { db in
+            do {
+                let createTableSQL = """
+                CREATE TABLE IF NOT EXISTS \(table) (
+                    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                    data BLOB NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_\(table)_timestamp ON \(table)(timestamp);
                 """
                 
-                let rows = try db.execute(fetchSQL)
-                guard let existing = rows.first?["data"]?.encodedValue(as: State.self) else {
-                    throw NSError(domain: "CipherStateContainers", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to retrieve state data."])
-                }
+                try db.exec(createTableSQL)
                 
-                return existing
+                let countSQL = "SELECT COUNT(*) AS count FROM \(table);"
+                let result = try db.execute(countSQL, with: [])
+                let count = result.first?["count"]?.numberValue ?? 0
+                
+                if count == 0 {
+                    try saveState(initial, using: db)
+                    return initial
+                    
+                } else {
+                    let fetchSQL = """
+                    SELECT data FROM \(table)
+                    ORDER BY timestamp DESC
+                    LIMIT 1;
+                    """
+                    
+                    let rows = try db.execute(fetchSQL)
+                    guard let existing = rows.first?["data"]?.encodedValue(as: State.self) else {
+                        throw NSError(domain: "CipherStateContainers", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to retrieve state data."])
+                    }
+                    
+                    return existing
+                }
+            }
+            catch {
+                errors.send(error)
+                return initial
             }
         }
     }
@@ -182,12 +189,12 @@ public final class SQLCipherStore<State: Codable & Equatable>: SQLCipherStores {
     ///   - store: The `SQLCipher` database where the state is stored.
     ///   - initial: The initial state to use if the table is empty.
     /// - Throws: An error if the initialization fails.
-    public required init(store: SQLCipher, initial: State) throws {
+    public required init(store: SQLCipher, initial: State) {
         self.cipher = store
         self.errors = CurrentValueSubject(nil)
         self.states = CurrentValueSubject(initial)
 
-        self.states.send(try initialize(initial: initial))
+        self.states.send(initialize(initial: initial))
     }
 }
 
