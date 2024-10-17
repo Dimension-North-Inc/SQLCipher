@@ -56,6 +56,12 @@ public final class SQLCipher {
     }
 }
 
+extension SQLCipher: Equatable {
+    public static func ==(lhs: SQLCipher, rhs: SQLCipher) -> Bool {
+        return lhs === rhs
+    }
+}
+
 // MARK: - Reading, Writing
 extension SQLCipher {
     /// Provides access to the writer connection for performing write operations.

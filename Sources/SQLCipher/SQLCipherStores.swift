@@ -190,3 +190,9 @@ public final class SQLCipherStore<State: Codable & Equatable>: SQLCipherStores {
         self.states.send(try initialize(initial: initial))
     }
 }
+
+extension SQLCipherStore: Equatable {
+    public static func ==(lhs: SQLCipherStore, rhs: SQLCipherStore) -> Bool {
+        return lhs === rhs
+    }
+}
