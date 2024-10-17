@@ -12,48 +12,48 @@ import OSLog
 
 @_exported import CSQLCipher
 
+/// A class for managing encrypted SQLite database connections using
+/// SQLCipher. It provides separate read and write connections with
+/// appropriate queue handling for concurrent reads and serialized
+/// writes.
 public final class SQLCipher {
+    /// The file path to the SQLite database.
     public let path: String
     
+    /// Separate connections for read and write operations.
     private var reader, writer: Connection
+    
+    /// A subject that publishes an event whenever the database is
+    /// updated, allowing observers to be notified of changes.
     private let didUpdate = PassthroughSubject<Void, Never>()
     
-    // Package-internal logger for SQLCipher operations
-    internal static let log = Logger(subsystem: "com.dimension-north.SQLCipher", category: "SQLCipher")
+    /// Package-internal logger for SQLCipher operations.
+    internal static let log = Logger(
+        subsystem: "com.dimension-north.SQLCipher",
+        category: "SQLCipher"
+    )
 
-    public init(path: String, key: String? = nil) throws {
+    /// Initializes a new `SQLCipher` instance with the specified
+    /// database file path and optional encryption key.
+    ///
+    /// - Parameters:
+    ///   - path: The file path to the database. Defaults to in-memory.
+    ///   - key: Optional encryption key for the database.
+    /// - Throws: An error if the database connection fails.
+    public init(path: String = ":memory:", key: String? = nil) throws {
         SQLCipher.log.info("connecting to: \(path)")
         self.path = path
         
+        // Initialize reader, writer connections.
         self.reader = try Connection(path: path, key: key, role: .reader)
         self.writer = try Connection(path: path, key: key, role: .writer)
         
+        // Set the writer’s onUpdate closure to call the `onUpdate`
+        // method, publishing an update notification on changes.
         writer.onUpdate = {
             [unowned self] connection in self.onUpdate(connection)
         }
     }
-    
-    /// Checks if the database file at `path` is empty.
-    ///
-    /// This method reports `true` if the database file exists and is 0 bytes
-    /// in size, which typically means it has no associated schema.
-    ///
-    /// - Returns: `true` if the file exists but has a size of 0 bytes; otherwise, `false`.
-    public func isEmpty() -> Bool {
-        do {
-            let attributes = try FileManager.default.attributesOfItem(atPath: path)
-            if let fileSize = attributes[.size] as? UInt64 {
-                return fileSize == 0
-            } else {
-                SQLCipher.log.error("Unable to retrieve file size for path: \(self.path, privacy: .public)")
-                return false
-            }
-        } catch {
-            SQLCipher.log.error("Failed to access file at path: \(self.path, privacy: .public) with error: \(error.localizedDescription, privacy: .public)")
-            return false
-        }
-    }
-
 }
 
 // MARK: - Reading, Writing
@@ -89,8 +89,7 @@ extension SQLCipher {
     }
 
     /// Returns a publisher that performs a read operation each time the underlying database changes.
-    /// Read operations must be pure - they can not update the database and are, in fact, prevented
-    /// from doing so.
+    /// Read operations must  not update the database and are, in fact, prevented from doing so.
     ///
     /// - Parameter block: A closure that takes the reader `Connection` and performs
     ///   operations on the database. This closure may throw errors.
@@ -98,7 +97,9 @@ extension SQLCipher {
     public func observe<T>(_ block: @escaping (Database) throws -> T) -> AnyPublisher<T, Never> {
         didUpdate
             .map { [weak self] _ -> T? in
-                guard let self = self else { return nil }
+                guard let self else {
+                    return nil
+                }
                 do {
                     return try self.read(block)
                 } catch {
@@ -107,5 +108,89 @@ extension SQLCipher {
             }
             .compactMap { $0 }  // Filter out nil values, if an error occurred or `self` was nil
             .eraseToAnyPublisher()
+    }
+}
+
+// MARK: - Simplified DB Access
+
+/// Convenience functions that forward operations to the `.writer` connection.
+/// These methods allow SQL commands to be executed within the context of the
+/// writable database connection.
+///
+/// Note: For greater efficiency, use `SQLCipher`'s `.read()` and `.write())`
+/// closure-based APIs to have queries routed appropriately..
+extension SQLCipher: Database {
+    /// Begins a transaction on the `.writer` connection.
+    ///
+    /// - Throws: An error if the transaction cannot be started.
+    ///
+    /// - See Also: `SQLCipher.write(_:)`, `Connection.begin()`
+    public func begin() throws {
+        try writer.begin()
+    }
+    
+    /// Commits the current transaction on the `.writer` connection.
+    ///
+    /// - Throws: An error if the commit fails.
+    ///
+    /// - See Also: `SQLCipher.write(_:)`, `Connection.commit()`
+    public func commit() throws {
+        try writer.commit()
+    }
+    
+    /// Rolls back the current transaction on the `.writer` connection.
+    ///
+    /// - Throws: An error if the rollback fails.
+    ///
+    /// - See Also: `SQLCipher.write(_:)`, `Connection.rollback()`
+    public func rollback() throws {
+        try writer.rollback()
+    }
+    
+    /// Executes a SQL command without returning any rows.
+    ///
+    /// - Parameter sql: The SQL command to execute.
+    /// - Throws: An error if the command fails.
+    ///
+    /// - See Also: `SQLCipher.write(_:)`, `Connection.exec(_:)`
+    public func exec(_ sql: String) throws {
+        try writer.exec(sql)
+    }
+    
+    /// Executes a query on the `.writer` connection.
+    ///
+    /// - Parameter sql: The SQL query to execute.
+    /// - Returns: An array of `Row` objects containing the results.
+    /// - Throws: An error if the query fails.
+    ///
+    /// - See Also: `SQLCipher.write(_:)`, `Connection.execute(_:)`
+    public func execute(_ sql: String) throws -> [Row] {
+        try writer.execute(sql)
+    }
+    
+    /// Executes a query on the `.writer` connection with positional bindings.
+    ///
+    /// - Parameters:
+    ///   - sql: The SQL query to execute.
+    ///   - values: An array of `Value` objects for positional binding.
+    /// - Returns: An array of `Row` objects containing the results.
+    /// - Throws: An error if the query fails.
+    ///
+    /// - See Also: `SQLCipher.write(_:)`, `Connection.execute(_:with:)`
+    public func execute(_ sql: String, with values: [Value]) throws -> [Row] {
+        try writer.execute(sql, with: values)
+    }
+    
+    /// Executes a query on the `.writer` connection with named bindings.
+    ///
+    /// - Parameters:
+    ///   - sql: The SQL query to execute.
+    ///   - namedValues: A dictionary mapping placeholder names to `Value` objects.
+    /// - Returns: An array of `Row` objects containing the results.
+    /// - Throws: An error if the query fails.
+    ///
+    /// - See Also: `SQLCipher.write(_:)`, `Connection.execute(_:with:)`
+    public func execute(_ sql: String, with namedValues: [String: Value]) throws -> [Row] {
+        try writer.execute(sql, with: namedValues)
     }
 }

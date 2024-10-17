@@ -9,36 +9,50 @@
 import Foundation
 import Combine
 
-/// A protocol for containers that manage a versioned state structure within an SQLCipher database.
+/// A protocol for containers that manage a versioned state structure within an
+/// SQLCipher database.
 protocol SQLCipherStores: AnyObject {
     associatedtype State: Codable & Equatable
     
     /// The `SQLCipher` store where state updates will be saved.
     var cipher: SQLCipher { get }
     
-    /// Published states
+    /// Publishes the current state of the container.
     var states: CurrentValueSubject<State, Never> { get }
     
-    /// Published errors
+    /// Publishes errors encountered during database operations.
     var errors: CurrentValueSubject<Error?, Never> { get }
     
     /// The name of the table in which this container's data is stored.
     var table: String { get }
     
-    /// Initializes the container with a specified `SQLCipher` store and an initial state.
+    /// Initializes the container with a specified `SQLCipher` store and an
+    /// initial state.
+    ///
+    /// - Parameters:
+    ///   - store: The `SQLCipher` database where the state is stored.
+    ///   - initial: The initial state to use if the table is empty.
+    /// - Throws: An error if initialization fails.
     init(store: SQLCipher, initial: State) throws
 }
 
 extension SQLCipherStores {
-    var state: State {
+    /// The current state of the container.
+    public var state: State {
         get { states.value }
     }
     
-    var error: Error? {
+    /// The latest error encountered, if any.
+    public var error: Error? {
         get { errors.value }
     }
     
-    func update(_ work: (Database, inout State) throws -> Void) {
+    /// Updates the state within a database transaction. If an error occurs,
+    /// the transaction is rolled back and the error is published.
+    ///
+    /// - Parameter work: A closure that performs updates on the database and
+    ///   modifies the state.
+    public func update(_ work: (Database, inout State) throws -> Void) {
         do {
             try cipher.write { db in
                 try db.begin()
@@ -59,11 +73,19 @@ extension SQLCipherStores {
         }
     }
     
-    var table: String {
+    /// The name of the table used for storing the container's data,
+    /// defaulting to the type name of `State`.
+    public var table: String {
         String(describing: State.self)
     }
     
-    func initialize(initial: State) throws -> State {
+    /// Initializes the state storage, creating the table if it does not
+    /// exist, or loading the most recent state if it does.
+    ///
+    /// - Parameter initial: The state to initialize if no data exists.
+    /// - Returns: The current state after loading or initialization.
+    /// - Throws: An error if table creation or state loading fails.
+    public func initialize(initial: State) throws -> State {
         return try cipher.write { db in
             let createTableSQL = """
             CREATE TABLE IF NOT EXISTS \(table) (
@@ -100,7 +122,13 @@ extension SQLCipherStores {
         }
     }
     
-    func saveState(_ state: State, using db: Database) throws {
+    /// Saves the provided state to the database.
+    ///
+    /// - Parameters:
+    ///   - state: The state to save.
+    ///   - db: The database connection to use for the operation.
+    /// - Throws: An error if the save operation fails.
+    public func saveState(_ state: State, using db: Database) throws {
         let insertSQL = """
         INSERT INTO \(table) (data)
         VALUES (:data)
@@ -114,13 +142,17 @@ extension SQLCipherStores {
     }
 }
 
-enum VacuumStyle {
+public enum VacuumStyle {
     case olderThan(Date)
     case copiesBeyond(Int)
 }
 
 extension SQLCipherStores {
-    func vacuum(_ style: VacuumStyle) throws {
+    /// Vacuums the database table, deleting rows based on the provided style.
+    ///
+    /// - Parameter style: The criteria for selecting rows to delete.
+    /// - Throws: An error if the vacuum operation fails.
+    public func vacuum(_ style: VacuumStyle) throws {
         try cipher.write { db in
             var deleteSQL = "DELETE FROM \(table) WHERE rowid IN (SELECT rowid FROM \(table)"
             
@@ -138,12 +170,19 @@ extension SQLCipherStores {
     }
 }
 
-final class SQLCipherStore<State: Codable & Equatable>: SQLCipherStores {
-    let cipher: SQLCipher
-    let states: CurrentValueSubject<State, Never>
-    let errors: CurrentValueSubject<Error?, Never>
+public final class SQLCipherStore<State: Codable & Equatable>: SQLCipherStores {
+    public let cipher: SQLCipher
+    public let states: CurrentValueSubject<State, Never>
+    public let errors: CurrentValueSubject<Error?, Never>
         
-    required init(store: SQLCipher, initial: State) throws {
+    /// Initializes the `SQLCipherStore` with a specified `SQLCipher` store
+    /// and an initial state.
+    ///
+    /// - Parameters:
+    ///   - store: The `SQLCipher` database where the state is stored.
+    ///   - initial: The initial state to use if the table is empty.
+    /// - Throws: An error if the initialization fails.
+    public required init(store: SQLCipher, initial: State) throws {
         self.cipher = store
         self.errors = CurrentValueSubject(nil)
         self.states = CurrentValueSubject(initial)

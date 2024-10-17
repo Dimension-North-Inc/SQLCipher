@@ -9,11 +9,10 @@
 import Foundation
 import CSQLCipher
 
-/// A protocol defining the basic database operations available to database readers and writers.
-/// Conforming types provide methods for executing SQL commands and queries with both positional
-/// and named parameters.
+/// A protocol defining a minimal SQL database client API. Conforming types
+/// provide transaction control methods, as well as methods for executing SQL
+/// commands and queries with both positional and named parameters.
 public protocol Database {
-    
     /// Begins a new transaction in the database.
     ///
     /// This method initiates a transaction, grouping multiple database operations
@@ -57,7 +56,7 @@ public protocol Database {
     /// Executes a query without named bindings.
     ///
     /// - Parameter sql: A SQL query without bindings.
-    /// - Throws: An error if the execution of any command fails.
+    /// - Throws: An error if query execution fails.
     @discardableResult
     func execute(_ sql: String) throws -> [Row]
 

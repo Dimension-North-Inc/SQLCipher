@@ -137,7 +137,7 @@ public final class Connection {
     
     /// Rekeys the database with a new encryption key.
     ///
-    /// If `nil` or an empty string is passed as the new key, the
+    /// If `nil` or an empty string is passed as the new key,
     /// database encryption will be removed.
     ///
     /// - Parameter key: The new encryption key. Pass `nil` or an empty
