@@ -34,6 +34,27 @@ protocol SQLCipherStores: AnyObject {
     ///   - initial: The initial state to use if the table is empty.
     /// - Throws: An error if initialization fails.
     init(store: SQLCipher, initial: State)
+    
+    /// Initializes the state storage, creating the table if it does not
+    /// exist, or loading the most recent state if it does.
+    ///
+    /// - Parameter initial: The state to initialize if no data exists.
+    /// - Returns: The current state after loading or initialization.
+    /// - Throws: An error if table creation or state loading fails.
+    func initialize(initial: State) -> State
+    
+    /// Updates the state within a database transaction. If an error occurs,
+    /// the transaction is rolled back and the error is published.
+    ///
+    /// - Parameter work: A closure that performs updates on the database and
+    ///   modifies the state.
+    func update(_ work: (Database, inout State) -> Void)
+    
+    /// Vacuums the database table, deleting rows based on the provided style.
+    ///
+    /// - Parameter style: The criteria for selecting rows to delete.
+    /// - Throws: An error if the vacuum operation fails.
+    func vacuum(_ style: VacuumStyle) throws
 }
 
 extension SQLCipherStores {
