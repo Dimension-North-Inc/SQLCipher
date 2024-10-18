@@ -8,6 +8,7 @@
 
 import CSQLCipher
 import Foundation
+import OSLog
 
 /// Represents an error occurring during SQLite operations, providing
 /// both an error code and description.
@@ -65,7 +66,15 @@ public typealias SQLiteErrorCode = Int32
 @discardableResult
 public func checked(_ code: SQLiteErrorCode) throws -> SQLiteErrorCode {
     guard code == SQLITE_OK || code == SQLITE_ROW || code == SQLITE_DONE else {
-        throw SQLiteError(code: code)
+        let error = SQLiteError(code: code)
+        log.error("checked(_:) throwing \(error.code): \(error.description)")
+        throw error
     }
     return code
 }
+
+/// Package-internal logger for SQLCipher operations.
+private let log = Logger(
+    subsystem: "com.dimension-north.SQLCipher",
+    category: "Error"
+)
