@@ -9,18 +9,13 @@
 import Foundation
 import Combine
 
-public enum VacuumStyle {
-    case olderThan(Date)
-    case copiesBeyond(Int)
-}
-
 public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
-    public let cipher: SQLCipher
+    public let store: SQLCipher
     public let table: String
-
+    
     public let states: CurrentValueSubject<State, Never>
     public let errors: CurrentValueSubject<Error?, Never>
-        
+    
     /// Initializes the `SQLCipherStore` with a specified `SQLCipher` store
     /// and an initial state.
     ///
@@ -29,12 +24,12 @@ public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
     ///   - initial: The initial state to use if the table is empty.
     /// - Throws: An error if the initialization fails.
     public required init(store: SQLCipher, table: String? = nil, initial: State) {
-        self.cipher = store
+        self.store  = store
         self.table  = table ?? String(describing: State.self)
-
+        
         self.errors = CurrentValueSubject(nil)
         self.states = CurrentValueSubject(initial)
-
+        
         self.states.send(initialize(initial: initial))
     }
     
@@ -66,7 +61,7 @@ public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
         
         try db.execute(insertSQL, with: bindings)
     }
-
+    
     /// Initializes the state storage, creating the table if it does not
     /// exist, or loading the most recent state if it does.
     ///
@@ -74,7 +69,7 @@ public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
     /// - Returns: The current state after loading or initialization.
     /// - Throws: An error if table creation or state loading fails.
     func initialize(initial: State) -> State {
-        return cipher.write { db in
+        return store.write { db in
             do {
                 let createTableSQL = """
                 CREATE TABLE IF NOT EXISTS \(table) (
@@ -115,7 +110,23 @@ public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
             }
         }
     }
-    
+}
+
+// MARK: - Observation
+extension SQLCipherStore {
+    /// Returns a publisher that performs a read operation each time the underlying database changes.
+    /// Read operations must  not update the database and are, in fact, prevented from doing so.
+    ///
+    /// - Parameter block: A closure that takes the reader `Connection` and performs
+    ///   operations on the database. This closure may throw errors.
+    /// - Returns: An `AnyPublisher` that emits the result of the closure's execution each time `didUpdate` is triggered.
+    public func observe<T>(_ block: @escaping (Database) throws -> T) -> AnyPublisher<T, Never> {
+        store.observe(block)
+    }
+}
+
+// MARK: - Update
+extension SQLCipherStore {
     /// Updates the state within a database transaction. If an error occurs,
     /// the transaction is rolled back and the error is published.
     ///
@@ -123,7 +134,7 @@ public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
     ///   modifies the state.
     public func update(_ work: (Database, inout State) throws -> Void) {
         do {
-            try cipher.write { db in
+            try store.write { db in
                 try db.begin()
                 
                 var tempState = state
@@ -137,17 +148,25 @@ public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
                 states.send(tempState)
             }
         } catch {
-            try? cipher.write { db in try db.rollback() }
+            try? store.write { db in try db.rollback() }
             errors.send(error)
         }
     }
+}
 
+// MARK: - Maintenance
+public enum VacuumStyle {
+    case olderThan(Date)
+    case copiesBeyond(Int)
+}
+
+extension SQLCipherStore {
     /// Vacuums the database table, deleting rows based on the provided style.
     ///
     /// - Parameter style: The criteria for selecting rows to delete.
     /// - Throws: An error if the vacuum operation fails.
     public func vacuum(_ style: VacuumStyle) throws {
-        try cipher.write { db in
+        try store.write { db in
             var deleteSQL = "DELETE FROM \(table) WHERE rowid IN (SELECT rowid FROM \(table)"
             
             switch style {
