@@ -121,13 +121,13 @@ public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
     ///
     /// - Parameter work: A closure that performs updates on the database and
     ///   modifies the state.
-    public func update(_ work: (Database, inout State) -> Void) {
+    public func update(_ work: (Database, inout State) throws -> Void) {
         do {
             try cipher.write { db in
                 try db.begin()
                 
                 var tempState = state
-                work(db, &tempState)
+                try work(db, &tempState)
                 
                 if tempState != state {
                     try saveState(tempState, using: db)
@@ -141,7 +141,7 @@ public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
             errors.send(error)
         }
     }
-        
+
     /// Vacuums the database table, deleting rows based on the provided style.
     ///
     /// - Parameter style: The criteria for selecting rows to delete.
