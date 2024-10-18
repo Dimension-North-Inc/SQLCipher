@@ -33,6 +33,9 @@ public final class SQLCipher {
         category: "SQLCipher"
     )
 
+    /// `true` if the receiver is an encrypted database, `false` otherwise
+    public private(set) var isEncrypted: Bool
+    
     /// Initializes a new `SQLCipher` instance with the specified
     /// database file path and optional encryption key.
     ///
@@ -48,11 +51,28 @@ public final class SQLCipher {
         self.reader = try Connection(path: path, key: key, role: .reader)
         self.writer = try Connection(path: path, key: key, role: .writer)
         
+        self.isEncrypted = if let key, !key.isEmpty { true } else { false }
+        
         // Set the writer’s onUpdate closure to call the `onUpdate`
         // method, publishing an update notification on changes.
         writer.onUpdate = {
             [unowned self] connection in self.onUpdate(connection)
         }
+    }
+    
+    /// Rekeys the database with a new encryption key.
+    ///
+    /// If `nil` or an empty string is passed as the new key,
+    /// database encryption will be removed.
+    ///
+    /// - Parameter key: The new encryption key. Pass `nil` or an empty
+    ///   string to remove encryption.
+    /// - Throws: An `SQLiteError` if the rekeying operation fails.
+    public func rekey(to key: String?) throws {
+        try self.reader.rekey(to: key)
+        try self.writer.rekey(to: key)
+        
+        self.isEncrypted = if let key, !key.isEmpty { true } else { false }
     }
 }
 

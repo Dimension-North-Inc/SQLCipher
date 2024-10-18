@@ -74,7 +74,6 @@ public final class Connection {
     private let queue: DispatchQueue
     public  var onUpdate: (Connection) -> SQLiteErrorCode
     
-    
     // Package-internal logger for SQLCipher operations
     internal static let log = Logger(subsystem: "com.dimension-north.SQLCipher", category: "Connection")
     
