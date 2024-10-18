@@ -224,7 +224,7 @@ extension Connection: Database {
     ///
     /// - Throws: An error if the transaction cannot be started.
     public func begin() throws {
-        try execute("BEGIN TRANSACTION")
+        try exec("BEGIN TRANSACTION;")
     }
     
     /// Commits the current transaction to the database.
@@ -236,7 +236,7 @@ extension Connection: Database {
     /// - Throws: An error if the transaction cannot be committed, which may indicate
     ///   issues with the underlying database or constraints violated during the transaction.
     public func commit() throws {
-        try execute("COMMIT")
+        try exec("COMMIT;")
     }
     
     /// Rolls back the current transaction in the database.
@@ -247,7 +247,7 @@ extension Connection: Database {
     ///
     /// - Throws: An error if the transaction cannot be rolled back.
     public func rollback() throws {
-        try execute("ROLLBACK")
+        try exec("ROLLBACK;")
     }
 
     /// Executes one or more SQL commands, separated by semicolons.
