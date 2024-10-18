@@ -60,7 +60,7 @@ public final class SQLCipher {
         }
     }
     
-    /// Rekeys the database with a new encryption key.
+    /// Resets the database encryption with a new encryption key.
     ///
     /// If `nil` or an empty string is passed as the new key,
     /// database encryption will be removed.
@@ -68,9 +68,9 @@ public final class SQLCipher {
     /// - Parameter key: The new encryption key. Pass `nil` or an empty
     ///   string to remove encryption.
     /// - Throws: An `SQLiteError` if the rekeying operation fails.
-    public func rekey(to key: String?) throws {
-        try self.reader.rekey(to: key)
-        try self.writer.rekey(to: key)
+    public func resetKey(to key: String?) throws {
+        try self.writer.resetKey(to: key)
+        try self.reader.setKey(key)
         
         self.isEncrypted = if let key, !key.isEmpty { true } else { false }
     }

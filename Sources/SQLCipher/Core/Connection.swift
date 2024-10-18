@@ -134,7 +134,19 @@ public final class Connection {
         }
     }
     
-    /// Rekeys the database with a new encryption key.
+    /// Sets the encryption key for the database connection.
+    ///
+    /// If `nil` or an empty string is passed as the key, it assumes the database is not encrypted.
+    ///
+    /// - Parameter key: The encryption key to set for the database connection.
+    ///   Pass `nil` or an empty string if the database is not encrypted.
+    /// - Throws: An `SQLiteError` if the operation fails.
+    public func setKey(_ key: String?) throws {
+        let keyToUse = key ?? ""
+        try checked(sqlite3_key(self.db, keyToUse, Int32(keyToUse.utf8.count)))
+    }
+    
+    /// Resets the database encryption with a new encryption key.
     ///
     /// If `nil` or an empty string is passed as the new key,
     /// database encryption will be removed.
@@ -142,9 +154,9 @@ public final class Connection {
     /// - Parameter key: The new encryption key. Pass `nil` or an empty
     ///   string to remove encryption.
     /// - Throws: An `SQLiteError` if the rekeying operation fails.
-    public func rekey(to key: String?) throws {
-        let replacement = key ?? ""
-        try checked(sqlite3_rekey(self.db, replacement, Int32(replacement.utf8.count)))
+    public func resetKey(to key: String?) throws {
+        let keyToUse = key ?? ""
+        try checked(sqlite3_rekey(self.db, keyToUse, Int32(keyToUse.utf8.count)))
     }
 }
 
