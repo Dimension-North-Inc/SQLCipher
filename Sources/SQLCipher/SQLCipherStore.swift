@@ -1,0 +1,169 @@
+//
+//  SQLCipherStores.swift
+//  SQLCipher
+//
+//  Created by Mark Onyschuk on 10/16/24.
+//  Copyright © 2024 Dimension North Inc. All rights reserved.
+//
+
+import Foundation
+import Combine
+
+public enum VacuumStyle {
+    case olderThan(Date)
+    case copiesBeyond(Int)
+}
+
+public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
+    public let cipher: SQLCipher
+    public let table: String
+
+    public let states: CurrentValueSubject<State, Never>
+    public let errors: CurrentValueSubject<Error?, Never>
+        
+    /// Initializes the `SQLCipherStore` with a specified `SQLCipher` store
+    /// and an initial state.
+    ///
+    /// - Parameters:
+    ///   - store: The `SQLCipher` database where the state is stored.
+    ///   - initial: The initial state to use if the table is empty.
+    /// - Throws: An error if the initialization fails.
+    public required init(store: SQLCipher, table: String? = nil, initial: State) {
+        self.cipher = store
+        self.table  = table ?? String(describing: State.self)
+
+        self.errors = CurrentValueSubject(nil)
+        self.states = CurrentValueSubject(initial)
+
+        self.states.send(initialize(initial: initial))
+    }
+    
+    /// The current state of the container.
+    public var state: State {
+        return states.value
+    }
+    
+    /// The latest error encountered, if any.
+    public var error: Error? {
+        return errors.value
+    }
+    
+    /// Saves the provided state to the database.
+    ///
+    /// - Parameters:
+    ///   - state: The state to save.
+    ///   - db: The database connection to use for the operation.
+    /// - Throws: An error if the save operation fails.
+    private func saveState(_ state: State, using db: Database) throws {
+        let insertSQL = """
+        INSERT INTO \(table) (data)
+        VALUES (:data)
+        """
+        
+        let bindings: [String: Value] = [
+            "data": try .encoded(state)
+        ]
+        
+        try db.execute(insertSQL, with: bindings)
+    }
+
+    /// Initializes the state storage, creating the table if it does not
+    /// exist, or loading the most recent state if it does.
+    ///
+    /// - Parameter initial: The state to initialize if no data exists.
+    /// - Returns: The current state after loading or initialization.
+    /// - Throws: An error if table creation or state loading fails.
+    func initialize(initial: State) -> State {
+        return cipher.write { db in
+            do {
+                let createTableSQL = """
+                CREATE TABLE IF NOT EXISTS \(table) (
+                    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                    data BLOB NOT NULL,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_\(table)_timestamp ON \(table)(timestamp);
+                """
+                
+                try db.exec(createTableSQL)
+                
+                let countSQL = "SELECT COUNT(*) AS count FROM \(table);"
+                let result = try db.execute(countSQL, with: [])
+                let count = result.first?["count"]?.numberValue ?? 0
+                
+                if count == 0 {
+                    try saveState(initial, using: db)
+                    return initial
+                } else {
+                    let fetchSQL = """
+                    SELECT data FROM \(table)
+                    ORDER BY timestamp DESC
+                    LIMIT 1;
+                    """
+                    
+                    let rows = try db.execute(fetchSQL)
+                    guard let existing = rows.first?["data"]?.encodedValue(as: State.self) else {
+                        throw NSError(domain: "CipherStateContainers", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to retrieve state data."])
+                    }
+                    
+                    return existing
+                }
+            }
+            catch {
+                errors.send(error)
+                return initial
+            }
+        }
+    }
+    
+    /// Updates the state within a database transaction. If an error occurs,
+    /// the transaction is rolled back and the error is published.
+    ///
+    /// - Parameter work: A closure that performs updates on the database and
+    ///   modifies the state.
+    public func update(_ work: (Database, inout State) -> Void) {
+        do {
+            try cipher.write { db in
+                try db.begin()
+                
+                var tempState = state
+                work(db, &tempState)
+                
+                if tempState != state {
+                    try saveState(tempState, using: db)
+                }
+                
+                try db.commit()
+                states.send(tempState)
+            }
+        } catch {
+            try? cipher.write { db in try db.rollback() }
+            errors.send(error)
+        }
+    }
+        
+    /// Vacuums the database table, deleting rows based on the provided style.
+    ///
+    /// - Parameter style: The criteria for selecting rows to delete.
+    /// - Throws: An error if the vacuum operation fails.
+    public func vacuum(_ style: VacuumStyle) throws {
+        try cipher.write { db in
+            var deleteSQL = "DELETE FROM \(table) WHERE rowid IN (SELECT rowid FROM \(table)"
+            
+            switch style {
+            case .olderThan(let date):
+                let timestamp = date.timeIntervalSince1970
+                deleteSQL += " WHERE timestamp < datetime(\(timestamp), 'unixepoch'))"
+                
+            case .copiesBeyond(let maxCount):
+                deleteSQL += " WHERE rowid NOT IN (SELECT rowid FROM \(table) ORDER BY timestamp DESC LIMIT \(maxCount)))"
+            }
+            
+            try db.exec(deleteSQL)
+        }
+    }
+    
+    public static func ==(lhs: SQLCipherStore, rhs: SQLCipherStore) -> Bool {
+        return lhs === rhs
+    }
+}
