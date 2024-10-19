@@ -283,7 +283,7 @@ extension Connection: Database {
     /// - Parameter sql: A SQL query without bindings.
     /// - Throws: An error if the execution of any command fails.
     @discardableResult
-    public func execute(_ sql: String) throws -> [Row] {
+    public func execute(_ sql: String) throws -> [SQLRow] {
         try execute(sql, with: [])
     }
 
@@ -295,12 +295,12 @@ extension Connection: Database {
     /// - Returns: An array of `Row` objects representing the query result.
     /// - Throws: An `SQLiteError` if the query fails.
     @discardableResult
-    public func execute(_ sql: String, with values: [Value]) throws -> [Row] {
+    public func execute(_ sql: String, with values: [SQLValue]) throws -> [SQLRow] {
         var statement: OpaquePointer?
-        var rows: [Row] = []
+        var rows: [SQLRow] = []
         
         var updatedSQL = sql
-        var expandedValues: [Value] = []
+        var expandedValues: [SQLValue] = []
 
         try queue.sync {
             // Expand `Value.array` items into individual positional placeholders
@@ -337,7 +337,7 @@ extension Connection: Database {
             
             // Step through the rows and collect results
             while sqlite3_step(statement) == SQLITE_ROW {
-                rows.append(Row(statement: statement))
+                rows.append(SQLRow(statement: statement))
             }
         }
         
@@ -352,12 +352,12 @@ extension Connection: Database {
     /// - Returns: An array of `Row` objects representing the query result.
     /// - Throws: An `SQLiteError` if the query fails.
     @discardableResult
-    public func execute(_ sql: String, with values: [String: Value]) throws -> [Row] {
+    public func execute(_ sql: String, with values: [String: SQLValue]) throws -> [SQLRow] {
         var statement: OpaquePointer?
-        var rows: [Row] = []
+        var rows: [SQLRow] = []
         
         var updatedSQL = sql
-        var expandedBindings: [String: Value] = [:]
+        var expandedBindings: [String: SQLValue] = [:]
 
         try queue.sync {
             // Process each named parameter for array expansion
@@ -401,7 +401,7 @@ extension Connection: Database {
             
             // Step through the rows and collect results
             while sqlite3_step(statement) == SQLITE_ROW {
-                rows.append(Row(statement: statement))
+                rows.append(SQLRow(statement: statement))
             }
         }
 

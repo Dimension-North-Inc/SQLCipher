@@ -55,7 +55,7 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
         VALUES (:data)
         """
         
-        let bindings: [String: Value] = [
+        let bindings: [String: SQLValue] = [
             "data": try .encoded(state)
         ]
         

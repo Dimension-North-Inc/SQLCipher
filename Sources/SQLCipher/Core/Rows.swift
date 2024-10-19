@@ -14,8 +14,8 @@ import Foundation
 ///
 /// This struct provides subscript access by column name, returning the
 /// associated `Value` for each column in the row.
-public struct Row {
-    private var values: [String: Value]
+public struct SQLRow {
+    private var values: [String: SQLValue]
     
     /// Initializes a `Row` by reading all columns from a SQLite statement.
     ///
@@ -28,7 +28,7 @@ public struct Row {
         self.values = [:]
         for index in 0..<sqlite3_column_count(statement) {
             let columnName = String(cString: sqlite3_column_name(statement, index))
-            values[columnName] = Value(stmt: statement, col: index)
+            values[columnName] = SQLValue(stmt: statement, col: index)
         }
     }
     
@@ -37,14 +37,14 @@ public struct Row {
     /// - Parameter key: The column name.
     /// - Returns: The `Value` for the column, or `nil` if the column name
     ///   does not exist in the row.
-    public subscript(key: String) -> Value? {
+    public subscript(key: String) -> SQLValue? {
         return values[key]
     }
 }
 
 /// Represents a value that can be stored in a SQLite database,
 /// encapsulating the common SQLite data types.
-public enum Value: Hashable {
+public enum SQLValue: Hashable {
     case number(Int64)
     case real(Double)
     case text(String)
@@ -52,7 +52,7 @@ public enum Value: Hashable {
     case null
         
     // synthetic IN statement support
-    indirect case array([Value])
+    indirect case array([SQLValue])
     
     public var numberValue: Int64? {
         if case let .number(value) = self {
@@ -87,7 +87,7 @@ public enum Value: Hashable {
     }
 }
 
-extension Value: CustomStringConvertible {
+extension SQLValue: CustomStringConvertible {
     // CustomStringConvertible conformance
     public var description: String {
         switch self {
@@ -113,12 +113,12 @@ extension Value: CustomStringConvertible {
 }
 
 
-extension Value {
-    public static func optional<T>(_ value: T?) -> Self where T: OptionalType, T.Wrapped == Value {
+extension SQLValue {
+    public static func optional<T>(_ value: T?) -> Self where T: OptionalType, T.Wrapped == SQLValue {
         return value?.wrappedValue ?? .null
     }
 
-    public func optionalValue<T: OptionalType>() -> T? where T.Wrapped == Value {
+    public func optionalValue<T: OptionalType>() -> T? where T.Wrapped == SQLValue {
         if case let wrapped as T = self { return wrapped }
         return nil
     }
@@ -185,7 +185,7 @@ extension Value {
     }
 }
 
-extension Value {
+extension SQLValue {
     /// Initializes a `Value` from a column in a SQLite statement.
     ///
     /// This initializer uses the column data type of the specified column

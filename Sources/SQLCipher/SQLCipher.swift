@@ -210,7 +210,7 @@ extension SQLCipher: Database {
     /// - Throws: An error if the query fails.
     ///
     /// - See Also: `SQLCipher.write(_:)`, `Connection.execute(_:)`
-    public func execute(_ sql: String) throws -> [Row] {
+    public func execute(_ sql: String) throws -> [SQLRow] {
         try writer.execute(sql)
     }
     
@@ -223,7 +223,7 @@ extension SQLCipher: Database {
     /// - Throws: An error if the query fails.
     ///
     /// - See Also: `SQLCipher.write(_:)`, `Connection.execute(_:with:)`
-    public func execute(_ sql: String, with values: [Value]) throws -> [Row] {
+    public func execute(_ sql: String, with values: [SQLValue]) throws -> [SQLRow] {
         try writer.execute(sql, with: values)
     }
     
@@ -236,7 +236,7 @@ extension SQLCipher: Database {
     /// - Throws: An error if the query fails.
     ///
     /// - See Also: `SQLCipher.write(_:)`, `Connection.execute(_:with:)`
-    public func execute(_ sql: String, with namedValues: [String: Value]) throws -> [Row] {
+    public func execute(_ sql: String, with namedValues: [String: SQLValue]) throws -> [SQLRow] {
         try writer.execute(sql, with: namedValues)
     }
 }

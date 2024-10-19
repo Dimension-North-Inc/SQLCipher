@@ -58,7 +58,7 @@ public protocol Database {
     /// - Parameter sql: A SQL query without bindings.
     /// - Throws: An error if query execution fails.
     @discardableResult
-    func execute(_ sql: String) throws -> [Row]
+    func execute(_ sql: String) throws -> [SQLRow]
 
     /// Executes a SQL query with positional parameters and returns the resulting rows.
     ///
@@ -72,7 +72,7 @@ public protocol Database {
     /// - Returns: An array of `Row` objects representing the query result set.
     /// - Throws: An error if the query execution or parameter binding fails.
     @discardableResult
-    func execute(_ sql: String, with values: [Value]) throws -> [Row]
+    func execute(_ sql: String, with values: [SQLValue]) throws -> [SQLRow]
     
     /// Executes a SQL query with named parameters and returns the resulting rows.
     ///
@@ -86,5 +86,5 @@ public protocol Database {
     /// - Returns: An array of `Row` objects representing the query result set.
     /// - Throws: An error if the query execution or parameter binding fails.
     @discardableResult
-    func execute(_ sql: String, with namedValues: [String: Value]) throws -> [Row]
+    func execute(_ sql: String, with namedValues: [String: SQLValue]) throws -> [SQLRow]
 }
