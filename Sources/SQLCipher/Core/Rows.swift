@@ -37,7 +37,7 @@ public struct Row {
     /// - Parameter key: The column name.
     /// - Returns: The `Value` for the column, or `nil` if the column name
     ///   does not exist in the row.
-    subscript(key: String) -> Value? {
+    public subscript(key: String) -> Value? {
         return values[key]
     }
 }
