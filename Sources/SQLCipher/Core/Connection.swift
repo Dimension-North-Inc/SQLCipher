@@ -58,7 +58,7 @@ public final class Connection {
         ///   the read-only behavior by prohibiting commit operations.
         /// - For `.writer`, this function always returns `SQLITE_OK`, allowing
         ///   all commit operations..
-        var onUpdate: (Connection) -> SQLiteErrorCode {
+        var onUpdate: (Connection) -> SQLErrorCode {
             switch self {
             case .reader:
                 return { _ in return SQLITE_MISUSE }
@@ -72,7 +72,7 @@ public final class Connection {
     private let db: OpaquePointer?
     
     private let queue: DispatchQueue
-    public  var onUpdate: (Connection) -> SQLiteErrorCode
+    public  var onUpdate: (Connection) -> SQLErrorCode
     
     // Package-internal logger for SQLCipher operations
     internal static let log = Logger(subsystem: "com.dimension-north.SQLCipher", category: "Connection")
@@ -130,7 +130,7 @@ public final class Connection {
         // Execute the query and check the result.
         let stepResult = sqlite3_step(stmt)
         if stepResult != SQLITE_ROW && stepResult != SQLITE_DONE {
-            throw SQLiteError(code: sqlite3_errcode(db))
+            throw SQLError(code: sqlite3_errcode(db))
         }
     }
     
@@ -181,7 +181,7 @@ extension Connection {
     /// to the database.
     ///
     /// - Returns: the result of `onUpdate(self)`
-    fileprivate func onCommit() -> SQLiteErrorCode {
+    fileprivate func onCommit() -> SQLErrorCode {
         return onUpdate(self)
     }
     
@@ -273,7 +273,7 @@ extension Connection: Database {
 
             let result = sqlite3_exec(self.db, sql, nil, nil, nil)
             if result != SQLITE_OK {
-                throw SQLiteError(code: result)
+                throw SQLError(code: result)
             }
         }
     }
@@ -325,7 +325,7 @@ extension Connection: Database {
             try checked(sqlite3_prepare_v2(db, updatedSQL, -1, &statement, nil))
             
             guard let statement else {
-                throw SQLiteError(misuse: "Failed to prepare SQL statement.")
+                throw SQLError(misuse: "Failed to prepare SQL statement.")
             }
             
             defer { sqlite3_finalize(statement) }
@@ -388,7 +388,7 @@ extension Connection: Database {
             try checked(sqlite3_prepare_v2(db, updatedSQL, -1, &statement, nil))
 
             guard let statement else {
-                throw SQLiteError(misuse: "Failed to prepare SQL statement.")
+                throw SQLError(misuse: "Failed to prepare SQL statement.")
             }
 
             defer { sqlite3_finalize(statement) }

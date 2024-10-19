@@ -12,9 +12,9 @@ import OSLog
 
 /// Represents an error occurring during SQLite operations, providing
 /// both an error code and description.
-public struct SQLiteError: Error {
+public struct SQLError: Error {
     /// The SQLite error code associated with the error.
-    public var code: SQLiteErrorCode
+    public var code: SQLErrorCode
     
     /// A textual description of the error.
     public var description: String
@@ -43,14 +43,14 @@ public struct SQLiteError: Error {
     /// - Parameters:
     ///   - code: The SQLite error code associated with the error.
     ///   - description: An optional message describing the error.
-    public init(code: SQLiteErrorCode, description: String? = nil) {
+    public init(code: SQLErrorCode, description: String? = nil) {
         self.code = code
         self.description = description ?? String(cString: sqlite3_errstr(code))
     }
 }
 
 /// Type alias representing an SQLite error code.
-public typealias SQLiteErrorCode = Int32
+public typealias SQLErrorCode = Int32
 
 /// Validates the result code of an SQLite operation, throwing an
 /// `SQLiteError` if the code does not indicate success.
@@ -64,9 +64,9 @@ public typealias SQLiteErrorCode = Int32
 ///   `SQLITE_ROW`, or `SQLITE_DONE`.
 /// - Returns: The result code if it represents success.
 @discardableResult
-public func checked(_ code: SQLiteErrorCode) throws -> SQLiteErrorCode {
+public func checked(_ code: SQLErrorCode) throws -> SQLErrorCode {
     guard code == SQLITE_OK || code == SQLITE_ROW || code == SQLITE_DONE else {
-        let error = SQLiteError(code: code)
+        let error = SQLError(code: code)
         log.error("checked(_:) throwing \(error.code): \(error.description)")
         throw error
     }

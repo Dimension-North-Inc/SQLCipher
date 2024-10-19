@@ -247,11 +247,11 @@ extension SQLValue {
             result = sqlite3_bind_null(stmt, idx)
             
         case .array:
-            throw SQLiteError(misuse: "unexpected array binding in expression")
+            throw SQLError(misuse: "unexpected array binding in expression")
         }
         
         if result != SQLITE_OK {
-            throw SQLiteError(code: result)
+            throw SQLError(code: result)
         }
     }
 }

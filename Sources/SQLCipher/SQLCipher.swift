@@ -129,7 +129,7 @@ extension SQLCipher {
     /// Called when changes are commited to the `writer` database.
     /// - Parameter connection: the `writer` connection
     /// - Returns: `SQLITE_OK` to allow the commit to occur
-    func onUpdate(_ connection: Connection) -> SQLiteErrorCode {
+    func onUpdate(_ connection: Connection) -> SQLErrorCode {
         didUpdate.send()
         return SQLITE_OK
     }
