@@ -130,8 +130,7 @@ extension SQLCipherStore {
     /// Updates the state within a database transaction. If an error occurs,
     /// the transaction is rolled back and the error is published.
     ///
-    /// - Parameter work: A closure that performs updates on the database and
-    ///   modifies the state.
+    /// - Parameter work: A closure that  updates  the database and modifies  state.
     public func update(_ work: (Database, inout State) throws -> Void) {
         do {
             try store.write { db in
@@ -150,6 +149,37 @@ extension SQLCipherStore {
         } catch {
             try? store.write { db in try db.rollback() }
             errors.send(error)
+        }
+    }
+    
+    /// Updates the state within a database transaction and returns a result.
+    /// If an error occurs, the transaction is rolled back, the error is published,
+    /// and the function returns `nil`.
+    ///
+    /// - Parameter work: A closure that  updates  the database and modifies  state.
+    /// - Returns: The result of the closure, or `nil` if an error occurs.
+    public func update<Result>(_ work: (Database, inout State) throws -> Result) -> Result? {
+        do {
+            return try store.write { db in
+                try db.begin()
+                
+                var tempState = state
+                let result = try work(db, &tempState)
+                
+                if tempState != state {
+                    try saveState(tempState, using: db)
+                }
+                
+                try db.commit()
+                states.send(tempState)
+                
+                return result
+            }
+        } catch {
+            try? store.write { db in try db.rollback() }
+            errors.send(error)
+            
+            return nil
         }
     }
 }
