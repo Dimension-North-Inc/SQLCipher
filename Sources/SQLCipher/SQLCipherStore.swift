@@ -23,7 +23,7 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
     ///   - store: The `SQLCipher` database where the state is stored.
     ///   - initial: The initial state to use if the table is empty.
     /// - Throws: An error if the initialization fails.
-    public required init(store: SQLCipher, table: String? = nil, initial: State) {
+    public init(store: SQLCipher, table: String? = nil, initial: State) {
         self.store  = store
         self.table  = table ?? String(describing: State.self)
         
