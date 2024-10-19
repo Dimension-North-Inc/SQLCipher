@@ -9,7 +9,7 @@
 import Foundation
 import Combine
 
-public final class SQLCipherStore<State: Codable & Equatable>: Equatable {
+open class SQLCipherStore<State: Codable & Equatable>: Equatable {
     public let store: SQLCipher
     public let table: String
     
