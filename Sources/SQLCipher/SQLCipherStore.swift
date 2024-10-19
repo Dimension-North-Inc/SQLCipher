@@ -130,7 +130,7 @@ extension SQLCipherStore {
     /// Updates the state within a database transaction. If an error occurs,
     /// the transaction is rolled back and the error is published.
     ///
-    /// - Parameter work: A closure that  updates  the database and modifies  state.
+    /// - Parameter work: A closure that updates the database and modifies the state.
     public func update(_ work: (Database, inout State) throws -> Void) {
         do {
             try store.write { db in
@@ -151,12 +151,12 @@ extension SQLCipherStore {
             errors.send(error)
         }
     }
-    
+
     /// Updates the state within a database transaction and returns a result.
     /// If an error occurs, the transaction is rolled back, the error is published,
     /// and the function returns `nil`.
     ///
-    /// - Parameter work: A closure that  updates  the database and modifies  state.
+    /// - Parameter work: A closure that updates the database and modifies the state.
     /// - Returns: The result of the closure, or `nil` if an error occurs.
     public func update<Result>(_ work: (Database, inout State) throws -> Result) -> Result? {
         do {
@@ -182,8 +182,63 @@ extension SQLCipherStore {
             return nil
         }
     }
-}
 
+    /// Asynchronously updates the state within a database transaction. If an error occurs,
+    /// the transaction is rolled back and the error is published.
+    ///
+    /// - Parameter work: An asynchronous closure that updates the database and modifies the state.
+    public func update(_ work: (Database, inout State) async throws -> Void) async {
+        do {
+            try await store.write { db in
+                try db.begin()
+                
+                var tempState = state
+                try await work(db, &tempState)
+                
+                if tempState != state {
+                    try saveState(tempState, using: db)
+                }
+                
+                try db.commit()
+                states.send(tempState)
+            }
+        } catch {
+            try? store.write { db in try db.rollback() }
+            errors.send(error)
+        }
+    }
+
+    /// Asynchronously updates the state within a database transaction and returns a result.
+    /// If an error occurs, the transaction is rolled back, the error is published,
+    /// and the function returns `nil`.
+    ///
+    /// - Parameter work: An asynchronous closure that updates the database and modifies the state.
+    /// - Returns: The result of the closure, or `nil` if an error occurs.
+    public func update<Result>(_ work: (Database, inout State) async throws -> Result) async -> Result? {
+        do {
+            return try await store.write { db in
+                try db.begin()
+                
+                var tempState = state
+                let result = try await work(db, &tempState)
+                
+                if tempState != state {
+                    try saveState(tempState, using: db)
+                }
+                
+                try db.commit()
+                states.send(tempState)
+                
+                return result
+            }
+        } catch {
+            try? store.write { db in try db.rollback() }
+            errors.send(error)
+            
+            return nil
+        }
+    }
+}
 // MARK: - Maintenance
 public enum VacuumStyle {
     case olderThan(Date)

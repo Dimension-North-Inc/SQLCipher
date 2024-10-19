@@ -419,5 +419,17 @@ extension Connection: Database {
     internal func performTask<T>(_ block: (Connection) throws -> T) rethrows -> T {
         try block(self)
     }
+    
+    /// Executes an asynchronous block that has access to the `Connection` instance.
+    ///
+    /// This method passes the `Connection` instance itself to the closure,
+    /// allowing the block to call public methods that handle the queue as
+    /// needed.
+    ///
+    /// - Parameter block: An asynchronous closure that takes the `Connection` instance as
+    ///   an argument, allowing access to its public methods.
+    internal func performTask<T>(_ block: (Connection) async throws -> T) async rethrows -> T {
+        return try await block(self)
+    }
 }
 

@@ -101,6 +101,26 @@ extension SQLCipher {
     public func read<T>(_ block: (Database) throws -> T) rethrows -> T {
         return try reader.performTask(block)
     }
+    
+    /// Provides asynchronous access to the writer connection for performing write operations.
+    ///
+    /// - Parameter block: An asynchronous closure that takes the writer `Connection` and performs
+    ///   operations on the database. This closure may throw errors.
+    /// - Throws: Rethrows any error that the block throws.
+    /// - Returns: The result of the block's execution.
+    public func write<T>(_ block: (Database) async throws -> T) async rethrows -> T {
+        return try await writer.performTask(block)
+    }
+
+    /// Provides asynchronous access to the reader connection for performing read operations.
+    ///
+    /// - Parameter block: An asynchronous closure that takes the reader `Connection` and performs
+    ///   operations on the database. This closure may throw errors.
+    /// - Throws: Rethrows any error that the block throws.
+    /// - Returns: The result of the block's execution.
+    public func read<T>(_ block: (Database) async throws -> T) async rethrows -> T {
+        return try await reader.performTask(block)
+    }
 }
     
 // MARK: - Observation
