@@ -9,6 +9,8 @@
 import Foundation
 import Combine
 
+@Observable
+@dynamicMemberLookup
 open class SQLCipherStore<State: Codable & Equatable>: Equatable {
     public let store: SQLCipher
     public let table: String
@@ -16,6 +18,16 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
     public let states: CurrentValueSubject<State, Never>
     public let errors: CurrentValueSubject<Error?, Never>
     
+    /// The current state of the container.
+    public var state: State {
+        didSet { states.send(state) }
+    }
+    
+    /// The latest error encountered, if any.
+    public var error: Error? {
+        didSet { errors.send(error) }
+    }
+
     /// Initializes the `SQLCipherStore` with a specified `SQLCipher` store
     /// and an initial state.
     ///
@@ -30,17 +42,14 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
         self.errors = CurrentValueSubject(nil)
         self.states = CurrentValueSubject(initial)
         
-        self.states.send(initialize(initial: initial))
-    }
-    
-    /// The current state of the container.
-    public var state: State {
-        return states.value
-    }
-    
-    /// The latest error encountered, if any.
-    public var error: Error? {
-        return errors.value
+        self.state  = initial
+        self.error  = nil
+        
+        let initial = initialize(initial: initial)
+        
+        // NOTE: property observers are not called by the initializer...
+        self.state  = initial
+        self.states.send(initial)
     }
     
     /// Saves the provided state to the database.
@@ -105,10 +114,14 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
                 }
             }
             catch {
-                errors.send(error)
+                self.error = error
                 return initial
             }
         }
+    }
+    
+    public subscript<Value>(dynamicMember keyPath: KeyPath<State, Value>) -> Value {
+        state[keyPath: keyPath]
     }
 }
 
@@ -144,11 +157,11 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                states.send(tempState)
+                state = tempState
             }
         } catch {
             try? store.write { db in try db.rollback() }
-            errors.send(error)
+            self.error = error
         }
     }
 
@@ -171,13 +184,13 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                states.send(tempState)
+                state = tempState
                 
                 return result
             }
         } catch {
             try? store.write { db in try db.rollback() }
-            errors.send(error)
+            self.error = error
             
             return nil
         }
@@ -200,11 +213,11 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                states.send(tempState)
+                state = tempState
             }
         } catch {
             try? store.write { db in try db.rollback() }
-            errors.send(error)
+            self.error = error
         }
     }
 
@@ -227,13 +240,13 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                states.send(tempState)
+                state = tempState
                 
                 return result
             }
         } catch {
             try? store.write { db in try db.rollback() }
-            errors.send(error)
+            self.error = error
             
             return nil
         }
