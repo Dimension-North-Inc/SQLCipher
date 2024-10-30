@@ -12,20 +12,27 @@ import Combine
 @Observable
 @dynamicMemberLookup
 open class SQLCipherStore<State: Codable & Equatable>: Equatable {
-    public let store: SQLCipher
+    public let db: SQLCipher
     public let table: String
     
-    public let states: CurrentValueSubject<State, Never>
-    public let errors: CurrentValueSubject<Error?, Never>
+    private let _states: CurrentValueSubject<State, Never>
+    private let _errors: CurrentValueSubject<Error?, Never>
+    
+    public var states: AnyPublisher<State, Never> {
+        _states.eraseToAnyPublisher()
+    }
+    public var errors: AnyPublisher<Error?, Never> {
+        _errors.eraseToAnyPublisher()
+    }
     
     /// The current state of the container.
     public var state: State {
-        didSet { states.send(state) }
+        _states.value
     }
     
     /// The latest error encountered, if any.
     public var error: Error? {
-        didSet { errors.send(error) }
+        _errors.value
     }
 
     /// Initializes the `SQLCipherStore` with a specified `SQLCipher` store
@@ -36,20 +43,16 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
     ///   - initial: The initial state to use if the table is empty.
     /// - Throws: An error if the initialization fails.
     public init(store: SQLCipher, table: String? = nil, initial: State) {
-        self.store  = store
+        self.db  = store
         self.table  = table ?? String(describing: State.self)
         
-        self.errors = CurrentValueSubject(nil)
-        self.states = CurrentValueSubject(initial)
+        self._errors = CurrentValueSubject(nil)
+        self._states = CurrentValueSubject(initial)
         
-        self.state  = initial
-        self.error  = nil
-        
-        let initial = initialize(initial: initial)
+        let fetched = initialize(initial: initial)
         
         // NOTE: property observers are not called by the initializer...
-        self.state  = initial
-        self.states.send(initial)
+        self._states.send(fetched)
     }
     
     /// Saves the provided state to the database.
@@ -78,7 +81,7 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
     /// - Returns: The current state after loading or initialization.
     /// - Throws: An error if table creation or state loading fails.
     func initialize(initial: State) -> State {
-        return store.write { db in
+        return db.write { db in
             do {
                 let createTableSQL = """
                 CREATE TABLE IF NOT EXISTS \(table) (
@@ -114,7 +117,7 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
                 }
             }
             catch {
-                self.error = error
+                _errors.send(error)
                 return initial
             }
         }
@@ -134,7 +137,43 @@ extension SQLCipherStore {
     ///   operations on the database. This closure may throw errors.
     /// - Returns: An `AnyPublisher` that emits the result of the closure's execution each time `didUpdate` is triggered.
     public func observe<T>(_ block: @escaping (Database) throws -> T) -> AnyPublisher<T, Never> {
-        store.observe(block)
+        db.observe(block)
+    }
+}
+
+// MARK: - Query (Read-only functions)
+extension SQLCipherStore {
+    
+    /// Performs a read-only query on the database and the current state, returning a result.
+    /// This does not modify the state or trigger any state changes.
+    ///
+    /// - Parameter work: A closure that reads from the database and state, returning a result.
+    /// - Returns: The result of the closure or `nil` if an error occurs.
+    public func query<Result>(_ work: (Database, State) throws -> Result) -> Result? {
+        do {
+            return try db.read { db in
+                return try work(db, state)
+            }
+        } catch {
+            _errors.send(error)
+            return nil
+        }
+    }
+
+    /// Asynchronously performs a read-only query on the database and the current state.
+    /// This does not modify the state or trigger any state changes.
+    ///
+    /// - Parameter work: An asynchronous closure that reads from the database and state, returning a result.
+    /// - Returns: The result of the closure or `nil` if an error occurs.
+    public func query<Result>(_ work: (Database, State) async throws -> Result) async -> Result? {
+        do {
+            return try await db.read { db in
+                return try await work(db, state)
+            }
+        } catch {
+            _errors.send(error)
+            return nil
+        }
     }
 }
 
@@ -146,7 +185,7 @@ extension SQLCipherStore {
     /// - Parameter work: A closure that updates the database and modifies the state.
     public func update(_ work: (Database, inout State) throws -> Void) {
         do {
-            try store.write { db in
+            try db.write { db in
                 try db.begin()
                 
                 var tempState = state
@@ -157,11 +196,11 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                state = tempState
+                _states.send(tempState)
             }
         } catch {
-            try? store.write { db in try db.rollback() }
-            self.error = error
+            try? db.write { db in try db.rollback() }
+            _errors.send(error)
         }
     }
 
@@ -173,7 +212,7 @@ extension SQLCipherStore {
     /// - Returns: The result of the closure, or `nil` if an error occurs.
     public func update<Result>(_ work: (Database, inout State) throws -> Result) -> Result? {
         do {
-            return try store.write { db in
+            return try db.write { db in
                 try db.begin()
                 
                 var tempState = state
@@ -184,13 +223,13 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                state = tempState
+                _states.send(tempState)
                 
                 return result
             }
         } catch {
-            try? store.write { db in try db.rollback() }
-            self.error = error
+            try? db.write { db in try db.rollback() }
+            _errors.send(error)
             
             return nil
         }
@@ -202,7 +241,7 @@ extension SQLCipherStore {
     /// - Parameter work: An asynchronous closure that updates the database and modifies the state.
     public func update(_ work: (Database, inout State) async throws -> Void) async {
         do {
-            try await store.write { db in
+            try await db.write { db in
                 try db.begin()
                 
                 var tempState = state
@@ -213,11 +252,11 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                state = tempState
+                _states.send(tempState)
             }
         } catch {
-            try? store.write { db in try db.rollback() }
-            self.error = error
+            try? db.write { db in try db.rollback() }
+            _errors.send(error)
         }
     }
 
@@ -229,7 +268,7 @@ extension SQLCipherStore {
     /// - Returns: The result of the closure, or `nil` if an error occurs.
     public func update<Result>(_ work: (Database, inout State) async throws -> Result) async -> Result? {
         do {
-            return try await store.write { db in
+            return try await db.write { db in
                 try db.begin()
                 
                 var tempState = state
@@ -240,13 +279,13 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                state = tempState
+                _states.send(tempState)
                 
                 return result
             }
         } catch {
-            try? store.write { db in try db.rollback() }
-            self.error = error
+            try? db.write { db in try db.rollback() }
+            _errors.send(error)
             
             return nil
         }
@@ -264,7 +303,7 @@ extension SQLCipherStore {
     /// - Parameter style: The criteria for selecting rows to delete.
     /// - Throws: An error if the vacuum operation fails.
     public func vacuum(_ style: VacuumStyle) throws {
-        try store.write { db in
+        try db.write { db in
             var deleteSQL = "DELETE FROM \(table) WHERE rowid IN (SELECT rowid FROM \(table)"
             
             switch style {
