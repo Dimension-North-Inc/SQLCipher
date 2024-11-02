@@ -10,6 +10,8 @@ let package = Package(
         .library( name: "CSQLCipher", targets: ["CSQLCipher"]),
         .library(name: "SQLCipher", targets: ["SQLCipher"]),
     ],
+    dependencies: [
+    ],
     targets: [
         .target(
             name: "CSQLCipher",
@@ -32,7 +34,9 @@ let package = Package(
         ),
         .target(
             name: "SQLCipher",
-            dependencies: ["CSQLCipher"],
+            dependencies: [
+                "CSQLCipher",
+            ],
             cSettings: [
                 .define("SQLITE_HAS_CODEC"),
                 .define("SQLITE_TEMP_STORE", to: "3"),

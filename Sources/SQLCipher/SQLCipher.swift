@@ -6,8 +6,8 @@
 //  Copyright © 2024 Dimension North Inc. All rights reserved.
 //
 
-import Foundation
 import Combine
+import Foundation
 import OSLog
 
 @_exported import CSQLCipher
@@ -25,7 +25,7 @@ public final class SQLCipher {
     
     /// A subject that publishes an event whenever the database is
     /// updated, allowing observers to be notified of changes.
-    private let didUpdate = PassthroughSubject<Void, Never>()
+    private let didUpdate = CurrentValueSubject<Void, Never>(())
     
     /// Package-internal logger for SQLCipher operations.
     internal static let log = Logger(
@@ -125,35 +125,12 @@ extension SQLCipher {
     
 // MARK: - Observation
 extension SQLCipher {
-    
     /// Called when changes are commited to the `writer` database.
     /// - Parameter connection: the `writer` connection
     /// - Returns: `SQLITE_OK` to allow the commit to occur
-    func onUpdate(_ connection: Connection) -> SQLErrorCode {
-        didUpdate.send()
+    private func onUpdate(_ connection: Connection) -> SQLErrorCode {
+        didUpdate.send(())
         return SQLITE_OK
-    }
-
-    /// Returns a publisher that performs a read operation each time the underlying database changes.
-    /// Read operations must  not update the database and are, in fact, prevented from doing so.
-    ///
-    /// - Parameter block: A closure that takes the reader `Connection` and performs
-    ///   operations on the database. This closure may throw errors.
-    /// - Returns: An `AnyPublisher` that emits the result of the closure's execution each time `didUpdate` is triggered.
-    public func observe<T>(_ block: @escaping (Database) throws -> T) -> AnyPublisher<T, Never> {
-        didUpdate
-            .map { [weak self] _ -> T? in
-                guard let self else {
-                    return nil
-                }
-                do {
-                    return try self.read(block)
-                } catch {
-                    return nil
-                }
-            }
-            .compactMap { $0 }  // Filter out nil values, if an error occurred or `self` was nil
-            .eraseToAnyPublisher()
     }
 }
 

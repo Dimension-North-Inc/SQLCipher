@@ -8,31 +8,38 @@
 
 import Foundation
 import Combine
+import OSLog
 
 @Observable
 @dynamicMemberLookup
-open class SQLCipherStore<State: Codable & Equatable>: Equatable {
+open class SQLCipherStore<State: Sendable & Codable & Equatable> {
     public let db: SQLCipher
     public let table: String
     
-    private let _states: CurrentValueSubject<State, Never>
-    private let _errors: CurrentValueSubject<Error?, Never>
-    
-    public var states: AnyPublisher<State, Never> {
-        _states.eraseToAnyPublisher()
-    }
-    public var errors: AnyPublisher<Error?, Never> {
-        _errors.eraseToAnyPublisher()
-    }
-    
     /// The current state of the container.
-    public var state: State {
-        _states.value
+    public private(set) var state: State
+    /// The latest error encountered, if any.
+    public private(set) var error: Error?
+
+    /// Notifies concrete subclasses that state update has occurred.
+    ///
+    /// - Parameters:
+    ///   - previous: previous state
+    ///   - current: current state
+    open func updated(previous: State, current: State) {}
+    
+    private func emit(_ current: State) {
+        log.trace("emitting state")
+        
+        let previous = self.state
+        self.state = current
+        
+        self.updated(previous: previous, current: current)
     }
     
-    /// The latest error encountered, if any.
-    public var error: Error? {
-        _errors.value
+    private func emit(_ error: Error?) {
+        log.trace("emitting error \(error?.localizedDescription ?? "nil")")
+        self.error = error
     }
 
     /// Initializes the `SQLCipherStore` with a specified `SQLCipher` store
@@ -43,16 +50,15 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
     ///   - initial: The initial state to use if the table is empty.
     /// - Throws: An error if the initialization fails.
     public init(store: SQLCipher, table: String? = nil, initial: State) {
-        self.db  = store
-        self.table  = table ?? String(describing: State.self)
+        self.db      = store
+        self.table   = table ?? String(describing: State.self)
         
-        self._errors = CurrentValueSubject(nil)
-        self._states = CurrentValueSubject(initial)
+        self.state   = initial
+        self.error   = nil
+                
+        self.state   = initialize(initial: initial)
         
-        let fetched = initialize(initial: initial)
-        
-        // NOTE: property observers are not called by the initializer...
-        self._states.send(fetched)
+        self.updated(previous: initial, current: state)
     }
     
     /// Saves the provided state to the database.
@@ -117,7 +123,7 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
                 }
             }
             catch {
-                _errors.send(error)
+                emit(error)
                 return initial
             }
         }
@@ -128,18 +134,6 @@ open class SQLCipherStore<State: Codable & Equatable>: Equatable {
     }
 }
 
-// MARK: - Observation
-extension SQLCipherStore {
-    /// Returns a publisher that performs a read operation each time the underlying database changes.
-    /// Read operations must  not update the database and are, in fact, prevented from doing so.
-    ///
-    /// - Parameter block: A closure that takes the reader `Connection` and performs
-    ///   operations on the database. This closure may throw errors.
-    /// - Returns: An `AnyPublisher` that emits the result of the closure's execution each time `didUpdate` is triggered.
-    public func observe<T>(_ block: @escaping (Database) throws -> T) -> AnyPublisher<T, Never> {
-        db.observe(block)
-    }
-}
 
 // MARK: - Query (Read-only functions)
 extension SQLCipherStore {
@@ -155,8 +149,24 @@ extension SQLCipherStore {
                 return try work(db, state)
             }
         } catch {
-            _errors.send(error)
+            emit(error)
             return nil
+        }
+    }
+
+    /// Performs a read-only query on the database and the current state, returning a result.
+    /// This does not modify the state or trigger any state changes.
+    ///
+    /// - Parameter work: A closure that reads from the database and state, returning a result.
+    /// - Returns: The result of the closure or `nil` if an error occurs.
+    public func query<Result>(_ work: (Database, State) throws -> Result) rethrows -> Result {
+        do {
+            return try db.read { db in
+                return try work(db, state)
+            }
+        } catch {
+            emit(error)
+            throw error
         }
     }
 
@@ -171,10 +181,27 @@ extension SQLCipherStore {
                 return try await work(db, state)
             }
         } catch {
-            _errors.send(error)
+            emit(error)
             return nil
         }
     }
+    
+    /// Asynchronously performs a read-only query on the database and the current state.
+    /// This does not modify the state or trigger any state changes.
+    ///
+    /// - Parameter work: An asynchronous closure that reads from the database and state, returning a result.
+    /// - Returns: The result of the closure or `nil` if an error occurs.
+    public func query<Result>(_ work: (Database, State) async throws -> Result) async rethrows -> Result {
+        do {
+            return try await db.read { db in
+                return try await work(db, state)
+            }
+        } catch {
+            emit(error)
+            throw error
+        }
+    }
+
 }
 
 // MARK: - Update
@@ -196,11 +223,11 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                _states.send(tempState)
+                emit(tempState)
             }
         } catch {
             try? db.write { db in try db.rollback() }
-            _errors.send(error)
+            emit(error)
         }
     }
 
@@ -223,13 +250,13 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                _states.send(tempState)
+               emit(tempState)
                 
                 return result
             }
         } catch {
             try? db.write { db in try db.rollback() }
-            _errors.send(error)
+            emit(error)
             
             return nil
         }
@@ -252,11 +279,11 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                _states.send(tempState)
+               emit(tempState)
             }
         } catch {
             try? db.write { db in try db.rollback() }
-            _errors.send(error)
+            emit(error)
         }
     }
 
@@ -279,18 +306,20 @@ extension SQLCipherStore {
                 }
                 
                 try db.commit()
-                _states.send(tempState)
+               emit(tempState)
                 
                 return result
             }
         } catch {
             try? db.write { db in try db.rollback() }
-            _errors.send(error)
+            emit(error)
             
             return nil
         }
     }
 }
+
+
 // MARK: - Maintenance
 public enum VacuumStyle {
     case olderThan(Date)
@@ -318,8 +347,7 @@ extension SQLCipherStore {
             try db.exec(deleteSQL)
         }
     }
-    
-    public static func ==(lhs: SQLCipherStore, rhs: SQLCipherStore) -> Bool {
-        return lhs === rhs
-    }
 }
+
+// Package-internal logger for SQLCipher operations
+private let log = Logger(subsystem: "com.dimension-north.SQLCipher", category: "SQLCipherStore")

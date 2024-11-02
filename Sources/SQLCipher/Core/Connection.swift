@@ -75,7 +75,7 @@ public final class Connection {
     public  var onUpdate: (Connection) -> SQLErrorCode
     
     // Package-internal logger for SQLCipher operations
-    internal static let log = Logger(subsystem: "com.dimension-north.SQLCipher", category: "Connection")
+    static let log = Logger(subsystem: "com.dimension-north.SQLCipher", category: "Connection")
     
     public init(path: String, key: String? = nil, role: Role) throws {
         self.queue = role.queue
