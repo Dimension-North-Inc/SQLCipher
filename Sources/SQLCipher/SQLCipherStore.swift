@@ -15,12 +15,14 @@ import OSLog
 open class SQLCipherStore<State: Sendable & Codable & Equatable> {
     public let db: SQLCipher
     public let table: String
-    
+
     /// The current state of the container.
     public private(set) var state: State
     /// The latest error encountered, if any.
     public private(set) var error: Error?
 
+    private var undoCursor: Date? = nil
+    
     /// Notifies concrete subclasses that state update has occurred.
     ///
     /// - Parameters:
@@ -93,9 +95,11 @@ open class SQLCipherStore<State: Sendable & Codable & Equatable> {
                 CREATE TABLE IF NOT EXISTS \(table) (
                     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
                     data BLOB NOT NULL,
+                    undoable INT DEFAULT 0,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_\(table)_timestamp ON \(table)(timestamp);
+                CREATE INDEX IF NOT EXISTS idx_\(table)_undoable ON \(table)(undoable);
                 """
                 
                 try db.exec(createTableSQL)
@@ -204,6 +208,7 @@ extension SQLCipherStore {
 
 }
 
+
 // MARK: - Update
 extension SQLCipherStore {
     /// Updates the state within a database transaction. If an error occurs,
@@ -237,7 +242,7 @@ extension SQLCipherStore {
     ///
     /// - Parameter work: A closure that updates the database and modifies the state.
     /// - Returns: The result of the closure, or `nil` if an error occurs.
-    public func update<Result>(_ work: (Database, inout State) throws -> Result) -> Result? {
+    public func updateReturning<Result>(_ work: (Database, inout State) throws -> Result) -> Result? {
         do {
             return try db.write { db in
                 try db.begin()
@@ -293,7 +298,8 @@ extension SQLCipherStore {
     ///
     /// - Parameter work: An asynchronous closure that updates the database and modifies the state.
     /// - Returns: The result of the closure, or `nil` if an error occurs.
-    public func update<Result>(_ work: (Database, inout State) async throws -> Result) async -> Result? {
+    @_disfavoredOverload
+    public func updateReturning<Result>(_ work: (Database, inout State) async throws -> Result) async -> Result? {
         do {
             return try await db.write { db in
                 try db.begin()
@@ -315,6 +321,98 @@ extension SQLCipherStore {
             emit(error)
             
             return nil
+        }
+    }
+}
+
+
+// MARK: - Update Actions Support
+extension SQLCipherStore {
+    /// Dispatches a single action, updating the state within a database transaction.
+    ///
+    /// - Parameter action: The action to execute.
+    public func dispatch(_ action: some SQLStoreAction<State>) {
+        update { db, state in
+            try action.update(state: &state, db: db)
+        }
+    }
+
+    /// Dispatches a composite action, allowing it to execute multiple updates.
+    ///
+    /// - Parameter action: The composite action to execute.
+    public func dispatch(_ action: some SQLStoreCompositeAction<State>) {
+        action.execute(in: self)
+    }
+}
+
+
+// MARK: - Undo/Redo
+extension SQLCipherStore {
+    // Marks the most recent row as undoable by setting `undoable` to `Date.now`.
+    public func markUndoPoint() {
+        try? db.write { db in
+            let markUndoSQL = """
+            UPDATE \(table)
+            SET undoable = 1
+            WHERE rowid = (SELECT rowid FROM \(table) ORDER BY timestamp DESC LIMIT 1);
+            """
+            try db.exec(markUndoSQL)
+        }
+    }
+    
+    // Moves the undo cursor to the previous undoable row and updates the state.
+    public func undo() {
+        let undoTimestamp = undoCursor ?? Date()
+        
+        try? db.write { db in
+            let findPreviousUndoSQL = """
+            SELECT timestamp, data FROM \(table)
+            WHERE undoable = 1 AND timestamp < datetime(:current)
+            ORDER BY timestamp DESC LIMIT 1;
+            """
+            let result = try db.execute(findPreviousUndoSQL, with: ["current": .date(undoTimestamp)])
+            
+            guard let row = result.first,
+                  let timestamp = row["timestamp"]?.dateValue,
+                  let data = row["data"]?.encodedValue(as: State.self) else { return }
+            
+            undoCursor = timestamp
+            emit(data)
+        }
+    }
+    
+    // Moves the undo cursor to the next undoable row and updates the state.
+    public func redo() {
+        guard let undoTimestamp = undoCursor else { return }
+        
+        try? db.write { db in
+            let findNextUndoSQL = """
+            SELECT timestamp, data FROM \(table)
+            WHERE undoable = 1 AND timestamp > datetime(:current)
+            ORDER BY timestamp ASC LIMIT 1;
+            """
+            let result = try db.execute(findNextUndoSQL, with: ["current": .date(undoTimestamp)])
+            
+            if let row = result.first,
+               let timestamp = row["timestamp"]?.dateValue,
+               let data = row["data"]?.encodedValue(as: State.self) {
+                // Found a redoable row; update state and cursor
+                undoCursor = timestamp
+                emit(data)
+                
+            } else {
+                // No more redoable rows; reset undoCursor and emit the most recent state
+                let fetchMostRecentSQL = """
+                SELECT data FROM \(table)
+                ORDER BY timestamp DESC
+                LIMIT 1;
+                """
+                let rows = try db.execute(fetchMostRecentSQL)
+                guard let data = rows.first?["data"]?.encodedValue(as: State.self) else { return }
+                
+                undoCursor = nil
+                emit(data)
+            }
         }
     }
 }
@@ -348,6 +446,7 @@ extension SQLCipherStore {
         }
     }
 }
+
 
 // Package-internal logger for SQLCipher operations
 private let log = Logger(subsystem: "com.dimension-north.SQLCipher", category: "SQLCipherStore")

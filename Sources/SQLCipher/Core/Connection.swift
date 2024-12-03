@@ -307,9 +307,9 @@ extension Connection: Database {
             for value in values {
                 switch value {
                 case .array(let elements):
-                    // Replace the first `?` found with placeholders for each element
+                    // Replace the last `?` found with placeholders for each element
                     let placeholders = elements.map { _ in "?" }.joined(separator: ", ")
-                    if let range = updatedSQL.range(of: "?") {
+                    if let range = updatedSQL.range(of: "?", options: .backwards) {
                         updatedSQL.replaceSubrange(range, with: placeholders)
                     }
                     expandedValues.append(contentsOf: elements)

@@ -3,6 +3,7 @@
 //  CSQLCipher
 //
 //  Created by Mark Onyschuk on 10/16/24.
+//  Copyright © 2024 Dimension North Inc. All rights reserved.
 //
 
 import Foundation
