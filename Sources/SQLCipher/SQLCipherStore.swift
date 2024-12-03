@@ -95,15 +95,30 @@ open class SQLCipherStore<State: Sendable & Codable & Equatable> {
                 CREATE TABLE IF NOT EXISTS \(table) (
                     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
                     data BLOB NOT NULL,
-                    undoable INT DEFAULT 0,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE INDEX IF NOT EXISTS idx_\(table)_timestamp ON \(table)(timestamp);
-                CREATE INDEX IF NOT EXISTS idx_\(table)_undoable ON \(table)(undoable);
                 """
-                
                 try db.exec(createTableSQL)
                 
+                // Check if the `undoable` column exists
+                let checkColumnSQL = "PRAGMA table_info(\(table));"
+                let columns = try db.execute(checkColumnSQL)
+                
+                let hasUndoable = columns.contains { row in
+                    row["name"]?.textValue == "undoable"
+                }
+                
+                // Add the `undoable` column if it does not exist
+                if !hasUndoable {
+                    let addColumnSQL = "ALTER TABLE \(table) ADD COLUMN undoable INT DEFAULT 0;"
+                    try db.exec(addColumnSQL)
+                    
+                    // Add index on the `undoable` column
+                    let addIndexSQL = "CREATE INDEX IF NOT EXISTS idx_\(table)_undoable ON \(table)(undoable);"
+                    try db.exec(addIndexSQL)
+                }
+
                 let countSQL = "SELECT COUNT(*) AS count FROM \(table);"
                 let result = try db.execute(countSQL, with: [])
                 let count = result.first?["count"]?.numberValue ?? 0
