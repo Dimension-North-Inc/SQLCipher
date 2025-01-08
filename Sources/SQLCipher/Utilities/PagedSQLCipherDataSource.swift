@@ -47,7 +47,7 @@ public final class PagedSQLCipherDataSource: PagedDataSource {
         
         let countQuery = "SELECT COUNT(*) AS count FROM (\(query))"
         do {
-            if let row = try db.execute(countQuery, with: substitutions).first,
+            if let row = try db.execute(countQuery, substitutions).first,
                let count = row["count"]?.numberValue {
                 let value = Int(count)
                 cachedCount = value
@@ -71,7 +71,7 @@ public final class PagedSQLCipherDataSource: PagedDataSource {
         let pagedQuery = "\(query) LIMIT \(count) OFFSET \(startIndex)"
         
         do {
-            return try db.execute(pagedQuery, with: substitutions)
+            return try db.execute(pagedQuery, substitutions)
         } catch {
             print("Error fetching page: \(error)")
             return []

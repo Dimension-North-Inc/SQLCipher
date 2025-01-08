@@ -10,6 +10,8 @@ import Foundation
 import CSQLCipher
 import OSLog
 
+private let CHUNK_SIZE = 975
+
 public final class Connection {
     /// An enumeration representing the role of a database connection, defining
     /// whether it is a read-only connection or a writable connection.
@@ -284,7 +286,7 @@ extension Connection: Database {
     /// - Throws: An error if the execution of any command fails.
     @discardableResult
     public func execute(_ sql: String) throws -> [SQLRow] {
-        try execute(sql, with: [])
+        try execute(sql, [])
     }
 
     /// Executes a query with positional bindings and returns the result as an array of `Row`.
@@ -295,53 +297,34 @@ extension Connection: Database {
     /// - Returns: An array of `Row` objects representing the query result.
     /// - Throws: An `SQLiteError` if the query fails.
     @discardableResult
-    public func execute(_ sql: String, with values: [SQLValue]) throws -> [SQLRow] {
-        var statement: OpaquePointer?
-        var rows: [SQLRow] = []
-        
+    public func execute(_ sql: String, _ values: [SQLValue]) throws -> [SQLRow] {
         var updatedSQL = sql
-        var expandedValues: [SQLValue] = []
+        var namedBindings: [String: SQLValue] = [:]
 
-        try queue.sync {
-            // Expand `Value.array` items into individual positional placeholders
-            for value in values {
-                switch value {
-                case .array(let elements):
-                    // Replace the last `?` found with placeholders for each element
-                    let placeholders = elements.map { _ in "?" }.joined(separator: ", ")
-                    if let range = updatedSQL.range(of: "?", options: .backwards) {
-                        updatedSQL.replaceSubrange(range, with: placeholders)
-                    }
-                    expandedValues.append(contentsOf: elements)
-                default:
-                    expandedValues.append(value)
-                }
-            }
-            
-            // Log the SQL with arguments
-            let args = expandedValues.map(\.description).joined(separator: ", ")
-            Connection.log.debug("Executing SQL query: \(updatedSQL, privacy: .public) with arguments: \(args, privacy: .public)")
-            
-            try checked(sqlite3_prepare_v2(db, updatedSQL, -1, &statement, nil))
-            
-            guard let statement else {
-                throw SQLError(misuse: "Failed to prepare SQL statement.")
-            }
-            
-            defer { sqlite3_finalize(statement) }
-            
-            // Bind expanded positional values
-            for (index, value) in expandedValues.enumerated() {
-                try value.bind(to: statement, at: Int32(index + 1))
-            }
-            
-            // Step through the rows and collect results
-            while sqlite3_step(statement) == SQLITE_ROW {
-                rows.append(SQLRow(statement: statement))
-            }
+        // Count the number of `?` placeholders in the SQL template
+        let placeholderCount = sql.reduce(0) { $0 + ($1 == "?" ? 1 : 0) }
+
+        // Validate that the number of placeholders matches the number of values
+        guard placeholderCount == values.count else {
+            throw SQLError(misuse: "SQL template contains \(placeholderCount) placeholders, but \(values.count) values were provided.")
         }
-        
-        return rows
+
+        // Transform positional placeholders into named placeholders
+        var placeholderCounter = 1
+        var index = updatedSQL.startIndex
+
+        while let range = updatedSQL[index...].range(of: "?") {
+            let placeholder = "arg\(placeholderCounter)"
+            
+            updatedSQL.replaceSubrange(range, with: ":" + placeholder)
+            namedBindings[placeholder] = values[placeholderCounter - 1]
+
+            placeholderCounter += 1
+            index = range.upperBound
+        }
+
+        // Delegate to the second execute method
+        return try execute(updatedSQL, namedBindings)
     }
     
     /// Executes a query with named bindings and returns the result as an array of `Row`.
@@ -352,40 +335,65 @@ extension Connection: Database {
     /// - Returns: An array of `Row` objects representing the query result.
     /// - Throws: An `SQLiteError` if the query fails.
     @discardableResult
-    public func execute(_ sql: String, with values: [String: SQLValue]) throws -> [SQLRow] {
-        var statement: OpaquePointer?
+    public func execute(_ sql: String, _ values: [String: SQLValue]) throws -> [SQLRow] {
         var rows: [SQLRow] = []
-        
-        var updatedSQL = sql
-        var expandedBindings: [String: SQLValue] = [:]
 
-        try queue.sync {
-            // Process each named parameter for array expansion
-            for (key, value) in values {
-                switch value {
-                case .array(let elements):
-                    // Generate placeholders for each element in the array
-                    let expandedPlaceholders = elements.enumerated().map { "\(key)_\($0.offset)" }
-                    let placeholderString = expandedPlaceholders.map { ":\($0)" }.joined(separator: ", ")
-                    
-                    // Replace `:key` with `:key_0, :key_1, ...` in the SQL
-                    updatedSQL = updatedSQL.replacingOccurrences(of: ":\(key)", with: placeholderString)
-                    
-                    // Add each element to the expanded bindings
-                    for (index, element) in elements.enumerated() {
-                        expandedBindings["\(key)_\(index)"] = element
-                    }
-                    
-                default:
-                    expandedBindings[key] = value
-                }
+        // Identify the `.array` argument, if any
+        let arrayArguments = values.filter {
+            if case .array = $0.value { return true }
+            return false
+        }
+        guard arrayArguments.count <= 1 else {
+            throw SQLError(misuse: "SQL supports at most one array argument.")
+        }
+
+        // If no `.array` arguments, proceed with the query as is
+        if arrayArguments.isEmpty {
+            return try executeImpl(sql, values)
+        }
+
+        // Handle the single `.array` argument
+        guard let (key, value) = arrayArguments.first, case .array(let elements) = value else {
+            throw SQLError(misuse: "Unexpected error processing array argument.")
+        }
+
+        // Chunk the array into groups of 500
+        let chunks = elements.chunked(into: CHUNK_SIZE)
+
+        for chunk in chunks {
+            var updatedSQL = sql
+            var expandedBindings: [String: SQLValue] = [:]
+
+            // Replace the array placeholder with chunk-specific placeholders
+            let expandedPlaceholders = chunk.enumerated().map { "\(key)_\($0.offset)" }
+            let placeholderString = expandedPlaceholders.map { ":\($0)" }.joined(separator: ", ")
+            updatedSQL = updatedSQL.replacingOccurrences(of: ":\(key)", with: placeholderString)
+
+            // Add chunk-specific bindings
+            for (index, element) in chunk.enumerated() {
+                expandedBindings["\(key)_\(index)"] = element
             }
 
-            // Log the SQL with arguments
-            let args = expandedBindings.map { "\($0.key) = \($0.value)" }.joined(separator: ", ")
-            Connection.log.debug("Executing SQL query: \(updatedSQL, privacy: .public) with arguments: \(args, privacy: .public)")
+            // Add the rest of the non-array bindings
+            for (otherKey, otherValue) in values where otherKey != key {
+                expandedBindings[otherKey] = otherValue
+            }
 
-            try checked(sqlite3_prepare_v2(db, updatedSQL, -1, &statement, nil))
+            // Execute the query for the current chunk
+            rows += try executeImpl(updatedSQL, expandedBindings)
+        }
+
+        return rows
+    }
+
+    private func executeImpl(_ sql: String, _ values: [String: SQLValue]) throws -> [SQLRow] {
+        var statement: OpaquePointer?
+        var rows: [SQLRow] = []
+
+        try queue.sync {
+            Connection.log.debug("Executing SQL query: \(sql, privacy: .public) with arguments: \(values, privacy: .public)")
+
+            try checked(sqlite3_prepare_v2(db, sql, -1, &statement, nil))
 
             guard let statement else {
                 throw SQLError(misuse: "Failed to prepare SQL statement.")
@@ -393,12 +401,12 @@ extension Connection: Database {
 
             defer { sqlite3_finalize(statement) }
 
-            // Bind the expanded named values
-            for (name, value) in expandedBindings {
+            // Bind the named values
+            for (name, value) in values {
                 let index = sqlite3_bind_parameter_index(statement, ":\(name)")
                 try value.bind(to: statement, at: index)
             }
-            
+
             // Step through the rows and collect results
             while sqlite3_step(statement) == SQLITE_ROW {
                 rows.append(SQLRow(statement: statement))
@@ -407,7 +415,7 @@ extension Connection: Database {
 
         return rows
     }
-        
+    
     /// Executes a block that has access to the `Connection` instance.
     ///
     /// This method passes the `Connection` instance itself to the closure,
@@ -433,3 +441,17 @@ extension Connection: Database {
     }
 }
 
+extension Collection {
+    fileprivate func chunked(into size: Int) -> [SubSequence] {
+        var chunks: [SubSequence] = []
+        var startIndex = self.startIndex
+
+        while startIndex != self.endIndex {
+            let endIndex = index(startIndex, offsetBy: size, limitedBy: self.endIndex) ?? self.endIndex
+            chunks.append(self[startIndex..<endIndex])
+            startIndex = endIndex
+        }
+
+        return chunks
+    }
+}
