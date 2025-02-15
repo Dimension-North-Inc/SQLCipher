@@ -7,11 +7,10 @@ let package = Package(
         .iOS(.v17), .macOS(.v14),
     ],
     products: [
-        .library( name: "CSQLCipher", targets: ["CSQLCipher"]),
+        .library(name: "CSQLCipher", targets: ["CSQLCipher"]),
         .library(name: "SQLCipher", targets: ["SQLCipher"]),
     ],
-    dependencies: [
-    ],
+    dependencies: [],
     targets: [
         .target(
             name: "CSQLCipher",
@@ -21,9 +20,9 @@ let package = Package(
             cSettings: [
                 .define("SQLITE_HAS_CODEC"),
                 .define("SQLITE_TEMP_STORE", to: "3"),
-                
+
                 .define("SQLCIPHER_CRYPTO_CC"),
-                
+
                 .define("NDEBUG"),
 
                 .headerSearchPath("include"),
@@ -35,14 +34,14 @@ let package = Package(
         .target(
             name: "SQLCipher",
             dependencies: [
-                "CSQLCipher",
+                "CSQLCipher"
             ],
             cSettings: [
                 .define("SQLITE_HAS_CODEC"),
                 .define("SQLITE_TEMP_STORE", to: "3"),
-                
+
                 .define("SQLCIPHER_CRYPTO_CC"),
-                
+
                 .define("NDEBUG"),
 
                 .headerSearchPath("include"),
@@ -50,6 +49,11 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("Security")
             ]
+        ),
+
+        .testTarget(
+            name: "SQLCipherTests",
+            dependencies: ["SQLCipher"]
         ),
     ]
 )
