@@ -44,7 +44,7 @@ open class SQLCipherStore<State> {
         }
     }
     
-    init(db: SQLCipher, state: State, substates: [Substate<State>]) {
+    public init(db: SQLCipher, state: State, substates: [Substate<State>]) {
         Self.initializeStateStorage(db: db)
         
         self.db      = db
@@ -57,11 +57,11 @@ open class SQLCipherStore<State> {
         self.substates = substates
     }
     
-    convenience init(db: SQLCipher, state: State) where State: Stored {
+    public convenience init(db: SQLCipher, state: State) where State: Stored {
         self.init(db: db, state: state, substates: [Substate(\.self)])
     }
     
-    func update(_ type: UpdateType, transform: (inout State, SQLConnection) throws -> Void) {
+    public func update(_ type: UpdateType, transform: (inout State, SQLConnection) throws -> Void) {
         do {
             let old = state
             var new = state
@@ -128,15 +128,15 @@ open class SQLCipherStore<State> {
 
 extension SQLCipherStore {
     // MARK: - Undo/Redo
-    var canUndo: Bool {
+    public var canUndo: Bool {
         current > 0
     }
 
-    var canRedo: Bool {
+    public var canRedo: Bool {
         current < updates.count - 1
     }
 
-    func undo() {
+    public func undo() {
         guard canUndo else { return }
         
         let old = updates[current].state
@@ -148,7 +148,7 @@ extension SQLCipherStore {
         
     }
 
-    func redo() {
+    public func redo() {
         guard canRedo else { return }
         
         let old = updates[current].state
