@@ -13,16 +13,17 @@ import CSQLCipher
  A type‑safe SQL query builder that uses a DSL to compose SQL queries with named parameters.
 
  The `SQLQuery` type leverages a result builder to provide a concise DSL for composing SQL query fragments.
- It automatically handles parameter naming, parameter extraction, and insertion of spaces between fragments.
+ For simpler query expressions, `SQLQuery` also conforms to `ExpressibleByStringInterpolation`.
 
- ## Overview
+ Both query building mechanisms  automatically handle parameter naming, parameter extraction, and insertion
+ of spaces between fragments.
+ 
+ ## The SQLQuery DSL
 
  `SQLQuery` allows you to build parameterized SQL queries in a type‑safe way. The DSL is designed to integrate
  seamlessly with your model types. In the DSL block you can use raw string literals as SQL fragments as well as
  helper methods that create parameters. Parameters can be provided via key paths or closures, and the DSL
  automatically substitutes temporary tokens with final named placeholders.
-
- ## Usage
 
  For example, consider the following model:
 
@@ -51,6 +52,38 @@ import CSQLCipher
  The DSL automatically inserts spaces between fragments (if needed) so you need not worry about
  manually adding whitespace between your raw SQL literals and parameters.
 
+ ## String Interpolation Support
+
+ `SQLQuery` also conforms to `ExpressibleByStringInterpolation`, enabling you to embed parameters directly
+ in a multi-line string literal. Each interpolation generates an anonymous parameter (`:p1`, `:p2`, …)
+ and binds its value automatically:
+
+ Using direct value interpolation:
+
+        let q: SQLQuery<Void> = """
+        let value: Int = 42
+        INSERT INTO counter (count) VALUES (\(value));
+        """
+
+ Using key-path interpolation:
+
+        struct P { var id: UUID }
+        let q: SQLQuery<P> = """
+        DELETE FROM sessions WHERE session_id = \(\.id);
+        """
+
+ Or using closure-based interpolation:
+
+        let q: SQLQuery<User> = """
+        UPDATE users
+        SET last_login = \({ $0.now })
+        WHERE id = \(\.id);
+        """
+
+ ## IMPORTANT
+ Raw `:named` placeholders in string literals are *not* recognized. Only parameters
+ registered via the DSL (`param(...)`) or via interpolation (`\(...)`) are bound.
+ 
  ## See Also
 
  - `SQLValue` – the type representing SQL values.
@@ -306,6 +339,15 @@ extension SQLQuery: ExpressibleByStringInterpolation {
         
         public mutating func appendLiteral(_ literal: String) {
             fragments.append(.raw(literal))
+        }
+        
+        public mutating func appendInterpolation<Value: SQLValueRepresentable>(_ value: Value?) {
+            let token = "__PARAM_\(UUID().uuidString)__"
+            let def = Parameter(name: nil, token: token) { _ in
+                guard let value else { return SQLValue.null }
+                return value.sqliteValue
+            }
+            fragments.append(Fragment(sql: token, parameters: [def]))
         }
         
         public mutating func appendInterpolation<Value: SQLValueRepresentable>(_ value: Value) {

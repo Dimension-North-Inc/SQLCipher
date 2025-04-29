@@ -8,6 +8,8 @@
 
 import Foundation
 
+@Observable
+@dynamicMemberLookup
 open class SQLCipherStore<State> {
     /// Container storage
     public let db: SQLCipher
@@ -20,7 +22,6 @@ open class SQLCipherStore<State> {
     /// The latest error encountered, if any.
     public private(set) var error: Error?
     
-    
     struct Update {
         let state: State
         let type:  UpdateType
@@ -28,8 +29,8 @@ open class SQLCipherStore<State> {
         static func undoable(_ state: State) -> Self {
             .init(state: state, type: .undoable)
         }
-        static func ephemeral(_ state: State) -> Self {
-            .init(state: state, type: .ephemeral)
+        static func pending(_ state: State) -> Self {
+            .init(state: state, type: .pending)
         }
     }
     
@@ -75,7 +76,7 @@ open class SQLCipherStore<State> {
             // undo management
             switch type {
             case .undoable, .critical:
-                if updates[current].type == .ephemeral {
+                if updates[current].type == .pending {
                     // If we have an ephemeral state, commit it by replacing the previous undoable
                     // and then add our new undoable state
                     updates =
@@ -99,18 +100,18 @@ open class SQLCipherStore<State> {
                     current -= excessUpdates
                 }
                 
-            case .ephemeral:
-                if updates[current].type == .ephemeral {
+            case .pending:
+                if updates[current].type == .pending {
                     // Replace existing ephemeral update
                     
-                    // Note that updates marked .ephemeral can only
+                    // Note that updates marked .pending can only
                     // exist where `current == updates.count - 1`, ie.
                     // at the top of the update stack.
                     
-                    updates[current] = .ephemeral(new)
+                    updates[current] = .pending(new)
                 } else {
                     // Push new ephemeral update
-                    updates = updates[0...current] + [.ephemeral(new)]
+                    updates = updates[0...current] + [.pending(new)]
                     current += 1
                 }
             }
@@ -123,6 +124,10 @@ open class SQLCipherStore<State> {
         catch {
             self.error = error
         }
+    }
+    
+    public subscript<T>(dynamicMember keyPath: KeyPath<State, T>) -> T {
+        return state[keyPath: keyPath]
     }
 }
 
@@ -208,7 +213,7 @@ extension SQLCipherStore {
                 try? setStateData(substate.encode(from: states.new), forKey: substate.key, db: db)
             }
 
-        case .ephemeral:
+        case .pending:
             return
         }
     }
