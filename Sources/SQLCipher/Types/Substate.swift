@@ -9,7 +9,7 @@
 import Foundation
 
 /// The persistent `Substate` of a larger `State`, stored in a SQLCipher database
-public struct Substate<State> {
+public struct Substate<State>: @unchecked Sendable {
     let key: String
 
     private let read: (State) -> any Stored

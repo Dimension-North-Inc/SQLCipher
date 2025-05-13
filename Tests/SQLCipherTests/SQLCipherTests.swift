@@ -18,7 +18,7 @@ import SQLCipher
         
         return path
     }
-
+    
     @Test func testDatabaseEncryption() throws {
         let correctPassword = "correct_password"
         let incorrectPassword = "incorrect_password"
@@ -39,7 +39,7 @@ import SQLCipher
         #expect(throws: Never.self) {
             let db = try SQLCipher(path: path, key: correctPassword)
             let result = try db.reader.execute("SELECT title FROM test WHERE id = \(1)")
-
+            
             #expect(result.count == 1)
             #expect(result[0].title == "test")
         }
@@ -61,26 +61,30 @@ import SQLCipher
         let user = User(id: 1, name: "johnny.appleseed@apple.com")
         #expect(query.params(from: user) == ["p1": .integer(1)])
     }
+}
 
-    @Test func testCipherStorePersistence() throws {
-        struct Address: Codable, Equatable, Stored {
-            var street: String
-            var city: String
-            var state: String
-            var zip: String
-        }
-        
-        struct Contacts: Codable, Equatable, Stored {
-            var emails: [String]
-            var phoneNumbers: [String]
-        }
-        
-        struct Customer: Equatable {
-            var name: String
-            var address: Address
-            var contacts: Contacts
-        }
-        
+@MainActor
+extension SQLCipherTests {
+    struct Address: Codable, Equatable, Stored {
+        var street: String
+        var city: String
+        var state: String
+        var zip: String
+    }
+    
+    struct Contacts: Codable, Equatable, Stored {
+        var emails: [String]
+        var phoneNumbers: [String]
+    }
+    
+    struct Customer: Equatable {
+        var name: String
+        var address: Address
+        var contacts: Contacts
+    }
+
+    @Test
+    func testCipherStoreUndo() async throws {
         let initial = Customer(
             name: "Johnny Appleseed",
             address: Address(
@@ -97,22 +101,72 @@ import SQLCipher
         
         let path = tempDBPath()
         let db   = try SQLCipher(path: path)
-
+        
         let store = SQLCipherStore(db: db, state: initial, substates: [Substate(\.address), Substate(\.contacts)])
         #expect(store.state.address.zip == "90210")
         #expect(store.state.contacts.emails == ["johnny_appleseed@apple.com"])
         
-        store.update(.undoable) { customer, db in
+        // Await the update to ensure it completes before checking state
+        await store.update(.undoable) { customer, db in
             customer.address.zip = "12345"
         }
-        
+
         #expect(store.state.address.zip == "12345")
         #expect(store.state.contacts.emails == ["johnny_appleseed@apple.com"])
+        
+        store.undo()
+        
+        #expect(store.state.address.zip == "90210")
+        #expect(store.state.contacts.emails == ["johnny_appleseed@apple.com"])
+    }
+    
+    @Test
+    func testCipherStorePersistence() async throws {
+        let initial = Customer(
+            name: "Johnny Appleseed",
+            address: Address(
+                street: "1 Infinite Loop",
+                city: "Cupertino",
+                state: "CA",
+                zip: "90210"
+            ),
+            contacts: Contacts(
+                emails: ["johnny_appleseed@apple.com"],
+                phoneNumbers: []
+            )
+        )
+        
+        let path = tempDBPath()
+        
+        let db = try SQLCipher(path: path)
+        let store = SQLCipherStore(db: db, state: initial, substates: [Substate(\.address), Substate(\.contacts)])
+        #expect(store.state.address.zip == "90210")
+        #expect(store.state.contacts.emails == ["johnny_appleseed@apple.com"])
+        
+        // Await the update to ensure it completes before checking state
+        await store.update(.pending) { customer, db in
+            customer.address.zip = "12345"
+        }
 
+        #expect(store.state.address.zip == "12345")
+        #expect(store.state.contacts.emails == ["johnny_appleseed@apple.com"])
+        
         let db2 = try SQLCipher(path: path)
         let store2 = SQLCipherStore(db: db2, state: initial, substates: [Substate(\.address), Substate(\.contacts)])
 
-        #expect(store2.state.address.zip == "12345")
+        #expect(store2.state.address.zip == "90210")
         #expect(store2.state.contacts.emails == ["johnny_appleseed@apple.com"])
+
+//         test fails if I update .undoable , but pushing an undoable should consume all changes before it that are pending...
+        await store.update(.undoable) { customer, db in
+            customer.contacts.emails = ["johnny_appleseed@gmail.com"]
+        }
+        
+        let db3 = try SQLCipher(path: path)
+        let store3 = SQLCipherStore(db: db3, state: initial, substates: [Substate(\.address), Substate(\.contacts)])
+
+        #expect(store3.state.address.zip == "12345")
+        #expect(store3.state.contacts.emails == ["johnny_appleseed@gmail.com"])
     }
+
 }

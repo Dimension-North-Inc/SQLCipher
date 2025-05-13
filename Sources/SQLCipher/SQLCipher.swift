@@ -16,7 +16,7 @@ import Foundation
 /// SQLCipher. It provides separate read and write connections with
 /// appropriate queue handling for concurrent reads and serialized
 /// writes.
-public final class SQLCipher {
+public final class SQLCipher: @unchecked Sendable {
     /// The file path to the SQLite database.
     public let path: String
     

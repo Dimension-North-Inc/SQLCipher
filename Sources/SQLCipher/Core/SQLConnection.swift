@@ -11,7 +11,7 @@ import OSLog
 
 import CSQLCipher
 
-public final class SQLConnection {
+public final class SQLConnection: @unchecked Sendable {
     /// An enumeration representing the role of a database connection, defining
     /// whether it is a read-only connection or a writable connection.
     ///
@@ -253,6 +253,19 @@ extension SQLConnection {
         try exec("ROLLBACK;")
     }
     
+    
+    public func begin(savepoint name: String) throws {
+        try exec("SAVEPOINT \(name);")
+    }
+
+    public func commit(savepoint name: String) throws {
+        try exec("RELEASE SAVEPOINT \(name);")
+    }
+
+    public func rollback(savepoint name: String) throws {
+        try exec("ROLLBACK TO SAVEPOINT \(name);")
+    }
+    
     public func exec(_ sql: String) throws {
         try queue.sync {
             Self.log.debug(
@@ -280,9 +293,7 @@ extension SQLConnection {
     /// - Throws: If execution fails
     @discardableResult
     public func execute<Params>(_ query: SQLQuery<Params>, _ params: Params) throws -> SQLResult {
-        try queue.sync {
-            return try query.prepared(for: self).execute(params)
-        }
+        return try query.prepared(for: self).execute(params)
     }
     
     /// Executes a parameter-less query
