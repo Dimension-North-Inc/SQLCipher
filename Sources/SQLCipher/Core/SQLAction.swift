@@ -37,7 +37,9 @@ extension SQLAction {
 
 /// Defines the persistence and undo behavior of an `SQLAction`.
 public enum UpdateType: Sendable {
-    /// An unpdate persisted with the next undoable or critical update.
+    /// An unpersisted update meant to be part of a larger update
+    case partial
+    /// An immediately persisted update that forms part of a larger undoable group.
     case pending
     /// An immediately persisted update which can be undone to some earlier state..
     case undoable

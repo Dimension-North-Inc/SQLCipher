@@ -17,10 +17,10 @@ import Foundation
 /// - Note: All updates are transactional and can be undone/redone up to `levelsOfUndo` times.
 /// - Warning: This class is main-actor isolated and safe for use from UI code. All database
 ///            and persistence work is performed off the main thread for UI responsiveness.
-@MainActor
+
 @Observable
 @dynamicMemberLookup
-open class SQLCipherStore<State: Sendable> {
+open class SQLCipherStore<State: Sendable>: @unchecked Sendable {
     /// The underlying SQLCipher database.
     public let db: SQLCipher
 
@@ -119,38 +119,35 @@ extension SQLCipherStore {
         _ type: UpdateType,
         transform: @Sendable @escaping (inout State, SQLConnection) throws -> T
     ) async throws -> T {
-        let old = state
-        let writer = db.writer
-
-        // Capture main-actor properties for use in the background queue
-        let db = self.db
-        let substates = self.substates
+        let writer = db.writer  // This can remain outside as it's not state-dependent
         
-        let updatesCopy = self.updates
-        let currentCopy = self.current
-
-        let levelsOfUndoCopy = self.levelsOfUndo
-        
-        // All DB work, including substates, is performed off the main actor
-        let result: Result<(T, State, [Update], Int), Error> = await withCheckedContinuation { continuation in
+        let result: Result<T, Error> = await withCheckedContinuation { continuation in
             updateQueue.async {
-                var new = old
-                var updates = updatesCopy
-                var current = currentCopy
+                // Capture necessary state inside the block as mutable copies where needed
+                let db              = self.db
+
+                let old             = self.state
+                var new             = old
+
+                var updates         = self.updates
+                var current         = self.current
+                
+                let substates       = self.substates
+                let levelsOfUndo    = self.levelsOfUndo
+
                 do {
                     // 1. Begin transaction
                     try writer.begin()
                     // 2. Call the transform closure
                     let value = try transform(&new, writer)
-
-                    // 3. Substate management (inside transaction)
+                    
+                    // 3. Substate management
                     switch type {
                     case .undoable:
                         if updates[current].type == .pending {
-                            // Find last undoable state in the stack
                             let lastUndoableIdx = (0...current).reversed().first(where: { updates[$0].type == .undoable }) ?? 0
                             let lastUndoable = updates[lastUndoableIdx].state
-                            Self.saveSubstates(substates, states: (old: lastUndoable, new: new), update: .undoable, db: db)
+                            try Self.saveSubstates(substates, states: (old: lastUndoable, new: new), update: .undoable, db: db)
                             // Update the stack: collapse pending into undoable
                             updates = Array(updates[0..<(current)]) + [
                                 .undoable(old),
@@ -158,28 +155,37 @@ extension SQLCipherStore {
                             ]
                             current += 1
                         } else {
-                            Self.saveSubstates(substates, states: (old: old, new: new), update: .undoable, db: db)
+                            try Self.saveSubstates(substates, states: (old: old, new: new), update: .undoable, db: db)
                             updates = updates[0...current] + [.undoable(new)]
                             current += 1
                         }
                         // Prune stack if needed
-                        let maximumUpdateLength = levelsOfUndoCopy + 1
+                        let maximumUpdateLength = levelsOfUndo + 1
                         if updates.count > maximumUpdateLength {
                             let excessUpdates = updates.count - maximumUpdateLength
                             updates.removeFirst(excessUpdates)
                             current -= excessUpdates
                         }
                     case .critical:
-                        Self.saveSubstates(substates, states: (old: old, new: new), update: .critical, db: db)
+                        try Self.saveSubstates(substates, states: (old: old, new: new), update: .critical, db: db)
                         updates = updates[0...current] + [.undoable(new)]
                         current += 1
-                        let maximumUpdateLength = levelsOfUndoCopy + 1
+                        let maximumUpdateLength = levelsOfUndo + 1
                         if updates.count > maximumUpdateLength {
                             let excessUpdates = updates.count - maximumUpdateLength
                             updates.removeFirst(excessUpdates)
                             current -= excessUpdates
                         }
                     case .pending:
+                        try Self.saveSubstates(substates, states: (old: old, new: new), update: .pending, db: db)
+                        if updates[current].type == .pending {
+                            updates[current] = .pending(new)
+                        } else {
+                            updates = updates[0...current] + [.pending(new)]
+                            current += 1
+                        }
+                    
+                    case .partial:
                         if updates[current].type == .pending {
                             updates[current] = .pending(new)
                         } else {
@@ -187,32 +193,35 @@ extension SQLCipherStore {
                             current += 1
                         }
                     }
-
-                    // 4. Commit transaction
+                    
+                    // 4. Commit transaction and update state
                     try writer.commit()
-                    // Pass both the result, the new state, and the updated stack back
-                    continuation.resume(returning: .success((value, new, updates, current)))
+                    
+                    self.updates = updates
+                    self.current = current
+                    
+                    self.error   = nil
+                    
+                    continuation.resume(returning: .success(value))  // Resume with just the value
+                    
                 } catch {
-                    // On error: rollback
                     try? writer.rollback()
+                    
+                    self.error  = error
+                    
                     continuation.resume(returning: .failure(error))
                 }
             }
         }
-
-        // Undo management and in-memory state update (on main actor)
+        
         switch result {
-        case .success(let (value, _, updates, current)):
-            self.updates = updates
-            self.current = current
-            self.error = nil
-            return value
-
+        case .success(let value):
+            return value  // Simply return the value
         case .failure(let error):
-            self.error = error
-            throw error
+            throw error  // Re-throw the error
         }
     }
+    
     
     /// Performs an asynchronous, transactional, undoable update on the store's state.
     ///
@@ -282,10 +291,14 @@ extension SQLCipherStore {
     /// - Note: If no undo is available, this method does nothing.
     public func undo() {
         guard canUndo else { return }
-        let old = updates[current].state
-        let new = updates[current - 1].state
-        Self.saveSubstates(substates, states: (old: old, new: new), update: .undoable, db: db)
-        current -= 1
+        updateQueue.sync {
+            let old = updates[current].state
+            let new = updates[current - 1].state
+            
+            try? Self.saveSubstates(substates, states: (old: old, new: new), update: .undoable, db: db)
+            
+            current -= 1
+        }
     }
 
     /// Redoes the last undone update, if possible.
@@ -293,10 +306,15 @@ extension SQLCipherStore {
     /// - Note: If no redo is available, this method does nothing.
     public func redo() {
         guard canRedo else { return }
-        let old = updates[current].state
-        let new = updates[current + 1].state
-        Self.saveSubstates(substates, states: (old: old, new: new), update: .undoable, db: db)
-        current += 1
+        
+        updateQueue.sync {
+            let old = updates[current].state
+            let new = updates[current + 1].state
+            
+            try? Self.saveSubstates(substates, states: (old: old, new: new), update: .undoable, db: db)
+            
+            current += 1
+        }
     }
 }
 
@@ -339,22 +357,23 @@ extension SQLCipherStore {
         states: (old: State, new: State),
         update: UpdateType,
         db: SQLCipher
-    ) {
+    ) throws {
         switch update {
-        case .undoable:
+        case .undoable, .pending:
             for substate in substates {
                 let old = substate.read(from: states.old)
                 let new = substate.read(from: states.new)
                 if !new.isEqual(to: old) {
-                    try? setStateData(substate.encode(from: states.new), forKey: substate.key, db: db)
+                    try setStateData(substate.encode(from: states.new), forKey: substate.key, db: db)
                 }
             }
         case .critical:
             for substate in substates {
-                try? setStateData(substate.encode(from: states.new), forKey: substate.key, db: db)
+                try setStateData(substate.encode(from: states.new), forKey: substate.key, db: db)
             }
-        case .pending:
-            return
+            
+        case .partial:
+            break
         }
     }
 

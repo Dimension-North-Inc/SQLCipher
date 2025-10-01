@@ -63,7 +63,6 @@ import SQLCipher
     }
 }
 
-@MainActor
 extension SQLCipherTests {
     struct Address: Codable, Equatable, Stored {
         var street: String
