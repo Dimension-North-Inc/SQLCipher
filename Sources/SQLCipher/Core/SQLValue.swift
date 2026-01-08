@@ -123,8 +123,9 @@ extension SQLValue {
     /// - Parameters:
     ///   - statement: The prepared SQLite statement (`OpaquePointer`).
     ///   - index: The 1-based index at which to bind the value.
+    ///   - db: The database handle, used for rich error reporting.
     /// - Throws: If binding fails.
-    public func bind(to statement: OpaquePointer, at index: Int32) throws {
+    public func bind(to statement: OpaquePointer, at index: Int32, on db: OpaquePointer?) throws {
         let result: Int32
         
         switch self {
@@ -143,15 +144,13 @@ extension SQLValue {
             let jsonData = try encoder.encode(values)
             
             guard let jsonString = String(data: jsonData, encoding: .utf8) else {
-                throw SQLError(error: "\(#function) unable to convert array to JSON string")
+                throw SQLiteError.general(code: SQLITE_ERROR, message: "\(#function) unable to convert array to JSON string")
             }
             
             result = sqlite3_bind_text(statement, index, jsonString, -1, SQLITE_TRANSIENT)
         }
         
-        if result != SQLITE_OK {
-            throw SQLError(code: result)
-        }
+        try checked(result, on: db)
     }
 }
 

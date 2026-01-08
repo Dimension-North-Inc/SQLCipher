@@ -87,10 +87,11 @@ public final class SQLConnection: @unchecked Sendable {
         self.onUpdate = role.onUpdate
         
         var db: OpaquePointer?
-        try checked(sqlite3_open_v2(path, &db, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE, nil))
+        try checked(sqlite3_open_v2(path, &db, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE, nil), on: db)
         
         guard let db else {
-            throw SQLError(error: "Failed to initialize database connection")
+            // Using our new error type for consistency
+            throw SQLiteError.general(code: SQLITE_ERROR, message: "Failed to initialize database connection")
         }
         
         self.db = db
@@ -126,7 +127,7 @@ public final class SQLConnection: @unchecked Sendable {
     /// - Throws: An `SQLiteError` if the operation fails.
     private func setKey(_ key: String?) throws {
         let keyToUse = key ?? ""
-        try checked(sqlite3_key(self.db, keyToUse, Int32(keyToUse.utf8.count)))
+        try checked(sqlite3_key(self.db, keyToUse, Int32(keyToUse.utf8.count)), on: self.db)
     }
     
     /// Verifies that the database is accessible by executing a simple
@@ -142,7 +143,7 @@ public final class SQLConnection: @unchecked Sendable {
         var stmt: OpaquePointer?
         
         // Prepare the SQL statement and validate success.
-        try checked(sqlite3_prepare_v2(db, sql, -1, &stmt, nil))
+        try checked(sqlite3_prepare_v2(db, sql, -1, &stmt, nil), on: db)
         
         // Ensure the statement is finalized to free resources.
         defer { sqlite3_finalize(stmt) }
@@ -150,7 +151,7 @@ public final class SQLConnection: @unchecked Sendable {
         // Execute the query and check the result.
         let stepResult = sqlite3_step(stmt)
         if stepResult != SQLITE_ROW && stepResult != SQLITE_DONE {
-            throw SQLError(code: sqlite3_errcode(db))
+            try checked(sqlite3_errcode(db), on: db)
         }
     }
     
@@ -167,10 +168,10 @@ public final class SQLConnection: @unchecked Sendable {
 
         if isEncrypted {
             // rekey when we're resetting the key on an already encrypted database
-            try checked(sqlite3_rekey(self.db, keyToUse, Int32(keyToUse.utf8.count)))
+            try checked(sqlite3_rekey(self.db, keyToUse, Int32(keyToUse.utf8.count)), on: self.db)
         } else if !keyToUse.isEmpty {
             // if our database is unkeyed, only set a key if it is non-empty
-            try checked(sqlite3_key(self.db, keyToUse, Int32(keyToUse.utf8.count)))
+            try checked(sqlite3_key(self.db, keyToUse, Int32(keyToUse.utf8.count)), on: self.db)
         }
 
         isEncrypted = !keyToUse.isEmpty
@@ -271,7 +272,7 @@ extension SQLConnection {
             Self.log.debug(
                 "executing: \(sql, privacy: .public)"
             )
-            try checked(sqlite3_exec(self.db, sql, nil, nil, nil))
+            try checked(sqlite3_exec(self.db, sql, nil, nil, nil), on: self.db)
         }
     }
         

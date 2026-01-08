@@ -472,7 +472,7 @@ public final class SQLPreparedQuery<Params> {
             let sqliteParams = query.params(from: params)
             for (key, value) in sqliteParams {
                 let index = sqlite3_bind_parameter_index(stmt, ":\(key)")
-                if index > 0 { try value.bind(to: stmt, at: index) }
+                if index > 0 { try value.bind(to: stmt, at: index, on: connection.db) }
             }
             
             SQLConnection.log.debug(
@@ -521,11 +521,10 @@ private func rewriteInClauses(sql: String) -> String {
 /// - Returns: a compiled SQL statement
 private func compile(sql: String, db: OpaquePointer) throws -> OpaquePointer {
     var stmt: OpaquePointer?
-    try checked(sqlite3_prepare_v2(db, sql, -1, &stmt, nil))
+    try checked(sqlite3_prepare_v2(db, sql, -1, &stmt, nil), on: db)
     guard let stmt else {
-        throw SQLError(misuse: "\(#function) failed to compile SQL statement")
+        throw SQLiteError.general(code: SQLITE_MISUSE, message: "\(#function) failed to compile SQL statement")
     }
     
     return stmt
 }
-

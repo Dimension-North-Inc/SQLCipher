@@ -32,7 +32,7 @@ import SQLCipher
             """
         )
         
-        #expect(throws: SQLError.self) {
+        #expect(throws: SQLiteError.self) {
             let _ = try SQLCipher(path: path, key: incorrectPassword)
         }
         

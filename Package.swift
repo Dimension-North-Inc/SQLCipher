@@ -23,6 +23,8 @@ let package = Package(
 
                 .define("SQLCIPHER_CRYPTO_CC"),
 
+                .define("SQLITE_ENABLE_FTS5"),
+
                 .define("NDEBUG"),
 
                 .headerSearchPath("include"),
@@ -41,6 +43,8 @@ let package = Package(
                 .define("SQLITE_TEMP_STORE", to: "3"),
 
                 .define("SQLCIPHER_CRYPTO_CC"),
+
+                .define("SQLITE_ENABLE_FTS5"),
 
                 .define("NDEBUG"),
 

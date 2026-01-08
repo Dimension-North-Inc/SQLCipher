@@ -10,67 +10,45 @@ import CSQLCipher
 import Foundation
 import OSLog
 
-/// Represents an error occurring during SQLite operations, providing
-/// both an error code and description.
-public struct SQLError: Error {
-    /// The SQLite error code associated with the error.
-    public var code: SQLErrorCode
-    
-    /// A textual description of the error.
-    public var description: String
+/// A detailed error type that provides both the SQLite error code and a human-readable message.
+public enum SQLiteError: Error, CustomStringConvertible {
+    /// A general error produced by the SQLite engine.
+    case general(code: Int32, message: String)
 
-    /// Initializes a general SQLite error with a custom description.
-    /// - Parameter description: A message describing the error.
-    public init(error description: String) {
-        self.code = SQLITE_ERROR
-        self.description = description
-    }
-    
-    /// Initializes an error specific to SQLite misuse with a custom
-    /// description.
-    /// - Parameter description: A message describing the error.
-    public init(misuse description: String) {
-        self.code = SQLITE_MISUSE
-        self.description = description
-    }
-
-    /// Initializes an SQLite error with a given code and an optional
-    /// custom description.
-    ///
-    /// If no description is provided, it will use the default SQLite
-    /// error message for the provided code.
-    ///
-    /// - Parameters:
-    ///   - code: The SQLite error code associated with the error.
-    ///   - description: An optional message describing the error.
-    public init(code: SQLErrorCode, description: String? = nil) {
-        self.code = code
-        self.description = description ?? String(cString: sqlite3_errstr(code))
+    public var description: String {
+        switch self {
+        case .general(let code, let message):
+            return "SQLite error code \(code): \(message)"
+        }
     }
 }
 
 /// Type alias representing an SQLite error code.
 public typealias SQLErrorCode = Int32
 
-/// Validates the result code of an SQLite operation, throwing an
+/// Validates the result code of an SQLite operation, throwing a detailed
 /// `SQLiteError` if the code does not indicate success.
 ///
-/// This function simplifies error checking by allowing a single
-/// line to validate an SQLite function call and throw an appropriate
-/// error if it fails.
+/// This function simplifies error checking by capturing the human-readable
+/// error message directly from the database connection if a failure occurs.
 ///
-/// - Parameter code: The result code of an SQLite operation.
-/// - Throws: An `SQLiteError` if the code is not `SQLITE_OK`,
-///   `SQLITE_ROW`, or `SQLITE_DONE`.
-/// - Returns: The result code if it represents success.
-@discardableResult
-public func checked(_ code: SQLErrorCode) throws -> SQLErrorCode {
+/// - Parameters:
+///   - code: The result code of an SQLite operation.
+///   - db: The database handle (`sqlite3*`) on which the operation was performed.
+/// - Throws: A `SQLiteError` containing the code and detailed message if the operation failed.
+public func checked(_ code: SQLErrorCode, on db: OpaquePointer?) throws {
     guard code == SQLITE_OK || code == SQLITE_ROW || code == SQLITE_DONE else {
-        let error = SQLError(code: code)
-        log.error("checked(_:) throwing \(error.code): \(error.description)")
+        // Get the detailed, human-readable error message from SQLite.
+        let message = String(cString: sqlite3_errmsg(db))
+        
+        // Create our new, descriptive error.
+        let error = SQLiteError.general(code: code, message: message)
+        
+        // Log the rich error message.
+        log.error("checked(_:on:) throwing: \(error.description)")
+        
         throw error
     }
-    return code
 }
 
 /// Package-internal logger for SQLCipher operations.
