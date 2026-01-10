@@ -8,22 +8,6 @@ This package delivers a robust Swift interface to SQLCipher, enabling developers
 
 The package is designed with flexibility in mind, allowing developers to leverage either or both of its operating modes within a single application. Whether you need traditional database operations for complex queries and data relationships, or you prefer the predictability of Redux-style state management with automatic persistence, this package provides clean, well-documented APIs for both approaches.
 
-## Features
-
-### Standard Database Operations
-
-The package provides full access to SQLCipher's encryption capabilities through a Swifty, type-safe API that abstracts away the complexities of the underlying C interface. You can perform all standard database operations including creating and opening databases with custom encryption keys, executing raw SQL statements, compiling prepared statements for repeated execution, and managing both read and write connections. The API follows Swift conventions and patterns, making it feel natural to developers familiar with Apple's frameworks while maintaining the power and flexibility of SQL.
-
-Connection management is handled gracefully, with support for multiple concurrent connections and automatic resource cleanup. The package provides both synchronous and asynchronous APIs for operations that might block the calling thread, enabling you to integrate encrypted database access into applications with varying concurrency requirements. Transaction support allows you to group related operations into atomic units, ensuring data consistency even when operations fail midway through a sequence.
-
-### Redux-Style State Container
-
-The Redux-style state container represents a unique approach to application state management, combining the predictability of unidirectional data flow with the security of encrypted database persistence. In this architecture, your entire application state resides in a single, immutable store that can only be modified by dispatching actions. These actions describe what should change, and a reducer function translates the current state and an action into a new state.
-
-What distinguishes this implementation is that the entire state tree is automatically persisted to the encrypted SQLCipher database, providing durability across application launches without requiring separate serialization logic. The state is stored efficiently using a normalized structure, with entities referenced by identifier rather than embedded directly. This approach mirrors the patterns used in popular JavaScript state management libraries while bringing them into the Swift ecosystem with full encryption support.
-
-The state container integrates seamlessly with SwiftUI through property wrappers and observable objects, enabling reactive UI updates when state changes. You can observe state changes using Combine publishers, making it straightforward to integrate with existing reactive codebases. Middleware support allows you to extend the dispatch pipeline with logging, analytics, persistence side effects, or any other cross-cutting concerns.
-
 ## Requirements
 
 | Platform | Minimum Version |
@@ -65,344 +49,6 @@ targets: [
 ]
 ```
 
-## Quick Start
-
-### Standard Database Usage
-
-Begin by importing the module and opening a database connection. You provide an encryption key that will be used to encrypt the database file, and this same key must be supplied when opening the database in subsequent sessions.
-
-```swift
-import SQLCipher
-
-// Open or create an encrypted database
-let database = try Database(
-    path: "path/to/your/database.sqlite",
-    key: "your-secret-password"
-)
-
-// Execute a query to create a table
-try database.execute("""
-    CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-""")
-
-// Insert data using parameterized queries
-try database.execute(
-    "INSERT INTO users (name, email) VALUES (?, ?)",
-    parameters: ["Alice", "alice@example.com"]
-)
-
-// Query data with result handling
-let users: [User] = try database.query("SELECT * FROM users")
-for user in users {
-    print("User: \(user.name), Email: \(user.email)")
-}
-
-// Use prepared statements for repeated queries
-let statement = try database.prepare(
-    "SELECT * FROM users WHERE email = ?"
-)
-try statement.execute(parameters: ["alice@example.com"])
-```
-
-### Redux State Container Usage
-
-The Redux-style state container provides a declarative approach to state management. Define your state structure, create actions that describe state changes, write reducers that compute new states, and dispatch actions to modify the store. The store automatically persists your state to the encrypted database.
-
-```swift
-import SQLCipher
-
-// Define your application state
-struct AppState: State {
-    var counter: Int = 0
-    var todos: [Todo] = []
-    var isLoading: Bool = false
-}
-
-// Define actions that can modify state
-enum CounterAction: Action {
-    case increment
-    case decrement
-    case set value(Int)
-}
-
-struct Todo: Codable, Identifiable {
-    let id: UUID
-    var title: String
-    var isCompleted: Bool
-}
-
-// Define actions for todo management
-enum TodoAction: Action {
-    case add(String)
-    case toggle(UUID)
-    case remove(UUID)
-}
-
-// Write reducers that transform state based on actions
-let appReducer: Reducer<AppState> = { state, action in
-    var newState = state
-    
-    switch action {
-    case let action as CounterAction:
-        switch action {
-        case .increment:
-            newState.counter += 1
-        case .decrement:
-            newState.counter -= 1
-        case let .set(value):
-            newState.counter = value
-        }
-        
-    case let action as TodoAction:
-        switch action {
-        case let .add(title):
-            let todo = Todo(
-                id: UUID(),
-                title: title,
-                isCompleted: false
-            )
-            newState.todos.append(todo)
-            
-        case let .toggle(id):
-            if let index = newState.todos.firstIndex(where: { $0.id == id }) {
-                newState.todos[index].isCompleted.toggle()
-            }
-            
-        case let .remove(id):
-            newState.todos.removeAll { $0.id == id }
-        }
-        
-    default:
-        break
-    }
-    
-    return newState
-}
-
-// Create the store with your reducer and encryption
-let store = try Store(
-    initialState: AppState(),
-    reducer: appReducer,
-    databasePath: "path/to/state.sqlite",
-    key: "state-encryption-key"
-)
-
-// Dispatch actions to modify state
-store.dispatch(CounterAction.increment)
-store.dispatch(CounterAction.increment)
-store.dispatch(CounterAction.set(value: 10))
-
-store.dispatch(TodoAction.add("Learn Swift"))
-store.dispatch(TodoAction.add("Build apps"))
-
-// Observe state changes
-store.$state
-    .receive(on: DispatchQueue.main)
-    .sink { state in
-        print("Counter: \(state.counter)")
-        print("Todos: \(state.todos.count)")
-    }
-    .store(in: &cancellables)
-```
-
-## Advanced Usage
-
-### Prepared Statements and Transactions
-
-For operations that require multiple related queries or repeated execution, prepared statements and transactions provide performance benefits and data integrity guarantees. Prepared statements are compiled once and can be executed multiple times with different parameters, avoiding the overhead of parsing and planning for each execution.
-
-```swift
-// Create a prepared statement for repeated use
-let insertStatement = try database.prepare(
-    "INSERT INTO products (sku, name, price) VALUES (?, ?, ?)"
-)
-
-// Execute the same statement with different values
-for product in products {
-    try insertStatement.execute(parameters: [
-        product.sku,
-        product.name,
-        product.price
-    ])
-}
-
-// Use transactions for atomic operations
-try database.transaction {
-    try database.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", 
-        parameters: [100, fromAccountId])
-    try database.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?",
-        parameters: [100, toAccountId])
-    try database.execute("INSERT INTO transactions (from, to, amount) VALUES (?, ?, ?)",
-        parameters: [fromAccountId, toAccountId, 100])
-}
-```
-
-### Middleware for State Container
-
-Middleware allows you to extend the Redux dispatch pipeline with custom behavior. Common uses include logging, analytics, persistence, and side effects. Middleware receives each action before it reaches the reducer and can perform additional processing or even dispatch new actions.
-
-```swift
-// Logger middleware for debugging
-let loggerMiddleware: Middleware<AppState> = { store, action, next in
-    print("Dispatching action: \(action)")
-    let before = store.state.value
-    next(action)
-    let after = store.state.value
-    print("State changed: \(before) -> \(after)")
-}
-
-// Analytics middleware
-let analyticsMiddleware: Middleware<AppState> = { store, action, next in
-    next(action)
-    
-    if let analyticsAction = action as? AnalyticsTrackable {
-        AnalyticsService.shared.track(
-            event: analyticsAction.analyticsEvent,
-            properties: analyticsAction.properties
-        )
-    }
-}
-
-// Apply middleware when creating the store
-let store = try Store(
-    initialState: AppState(),
-    reducer: appReducer,
-    databasePath: "path/to/state.sqlite",
-    key: "state-encryption-key",
-    middleware: [loggerMiddleware, analyticsMiddleware]
-)
-```
-
-### Combining Database and State Container
-
-Many applications benefit from using both the standard database interface and the state container together. You might use the state container for user interface state and application preferences while maintaining traditional database tables for complex data relationships or historical records. Both can share the same database file and encryption key, or they can use separate files for different security requirements.
-
-```swift
-// Use a single encrypted database for both purposes
-let database = try Database(
-    path: "shared-database.sqlite",
-    key: "shared-encryption-key"
-)
-
-// Store application preferences in state container
-let preferencesStore = try Store(
-    initialState: AppPreferences(),
-    reducer: preferencesReducer,
-    databasePath: "shared-database.sqlite",
-    key: "shared-encryption-key"
-)
-
-// Store complex relational data using standard database
-try database.execute("""
-    CREATE TABLE orders (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER,
-        product_id INTEGER,
-        quantity INTEGER,
-        status TEXT,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-    )
-""")
-```
-
-## API Reference
-
-### Database Class
-
-The `Database` class provides the primary interface for standard SQLCipher operations.
-
-**Initialization**
-
-```swift
-init(path: String, key: String, readonly: Bool = false) throws
-```
-
-Opens or creates a database at the specified path with the given encryption key. Set `readonly` to true for read-only access to existing databases.
-
-**Executing Queries**
-
-```swift
-func execute(_ sql: String, parameters: [DatabaseValue] = []) throws
-```
-
-Executes a SQL statement that does not return results, such as CREATE TABLE, INSERT, UPDATE, or DELETE statements. Parameters can be bound to prevent SQL injection attacks.
-
-**Querying Data**
-
-```swift
-func query<T: Decodable>(_ sql: String, parameters: [DatabaseValue] = []) throws -> [T]
-```
-
-Executes a SELECT query and automatically decodes the results into an array of Swift objects conforming to Decodable. This eliminates manual result parsing for common use cases.
-
-**Prepared Statements**
-
-```swift
-func prepare(_ sql: String) throws -> Statement
-```
-
-Creates a prepared statement for repeated execution with potentially different parameters.
-
-### Store Class
-
-The `Store` class implements the Redux-style state container.
-
-**Initialization**
-
-```swift
-init(
-    initialState: S,
-    reducer: @escaping Reducer<S>,
-    databasePath: String,
-    key: String,
-    middleware: [Middleware<S>] = []
-) throws
-```
-
-Creates a new store with the given initial state, reducer function, database path for persistence, encryption key, and optional middleware chain.
-
-**Dispatching Actions**
-
-```swift
-func dispatch(_ action: Action)
-```
-
-Dispatches an action to the store, triggering the reducer to compute a new state and persisting the updated state to the database.
-
-**State Observation**
-
-```swift
-var state: CurrentValueSubject<S, Never>
-```
-
-A Combine publisher that emits the current state whenever it changes. Use this with SwiftUI's `@ObservedObject` or with Combine's sink operator for reactive updates.
-
-### Statement Class
-
-The `Statement` class represents a compiled SQL statement.
-
-**Execution**
-
-```swift
-func execute(parameters: [DatabaseValue]) throws
-func execute() throws // For statements with no parameters
-```
-
-Executes the prepared statement with the provided parameter values.
-
-**Iteration**
-
-```swift
-func iterate() throws -> AnyIterator<[String: DatabaseValue]>
-```
-
-Returns an iterator over the result rows, where each row is a dictionary mapping column names to their values.
-
 ## Security Considerations
 
 The encryption provided by SQLCipher uses 256-bit AES in CBC mode by default, with a SHA-1 based HMAC for integrity verification. The encryption key you provide is never stored in the database; only the derived key material is retained. If you lose the key, your data is irrecoverably encrypted and cannot be accessed without it.
@@ -410,6 +56,541 @@ The encryption provided by SQLCipher uses 256-bit AES in CBC mode by default, wi
 For production applications, consider how you will securely obtain and store the encryption key. Options include deriving the key from a user passphrase, retrieving it from a secure keychain, or using a hybrid approach where a keychain-stored master key encrypts per-database keys. Never hardcode keys in your application bundle, and consider using iOS/macOS Keychain services for key storage.
 
 The state container stores your entire application state in the encrypted database. Be mindful of what information you include in state objects, as it will all be encrypted and persisted to disk. Sensitive data that should only be held in memory should not be included in the persisted state.
+
+## Usage
+
+This package provides two primary usage patterns: direct database operations and a Redux-style state container. The following sections demonstrate how to use each component.
+
+### SQLCipher - Database Wrapper
+
+`SQLCipher` is the main database wrapper that manages encrypted SQLite connections. It provides separate reader and writer connections for optimal concurrency.
+
+```swift
+import SQLCipher
+
+// Initialize an encrypted database
+let dbPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0] + "/app.db"
+let encryptionKey = "your-secure-encryption-key"
+let db = try SQLCipher(path: dbPath, key: encryptionKey)
+
+// Check if the database is encrypted
+print("Database is encrypted: \(db.isEncrypted)")
+
+// Change the encryption key (rekeying)
+try db.resetKey(to: "new-encryption-key")
+
+// Use an in-memory database (useful for testing)
+let inMemoryDB = try SQLCipher(path: ":memory:")
+```
+
+### SQLConnection - Read and Write Operations
+
+`SQLCipher` provides `reader` and `writer` connections. The reader connection supports concurrent reads, while the writer connection serializes writes.
+
+```swift
+// Execute raw SQL statements
+try db.writer.exec("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE,
+        created_at TEXT
+    )
+""")
+
+// Insert data
+try db.writer.exec("""
+    INSERT INTO users (name, email, created_at)
+    VALUES ('Alice', 'alice@example.com', datetime('now'))
+""")
+
+// Query data using the reader connection (parameterized query)
+struct EmailParam {
+    let email: String
+}
+
+let query: SQLQuery<EmailParam> = "SELECT * FROM users WHERE email = \(\.email)"
+let result = try db.reader.execute(query, EmailParam(email: "alice@example.com"))
+for row in result {
+    if let name: String = row["name"],
+       let email: String = row["email"] {
+        print("User: \(name) - \(email)")
+    }
+}
+
+// Or use a static query without parameters
+let allUsersQuery: SQLStaticQuery = "SELECT * FROM users"
+let allUsers = try db.reader.execute(allUsersQuery)
+for row in allUsers {
+    if let name: String = row["name"],
+       let email: String = row["email"] {
+        print("User: \(name) - \(email)")
+    }
+}
+```
+
+### SQLQuery - Type-Safe Query Builder
+
+`SQLQuery` provides a type-safe DSL for building parameterized SQL queries, preventing SQL injection and improving code clarity.
+
+#### Using the DSL Builder
+
+```swift
+// Define a model for query parameters
+struct UserParams {
+    let id: Int
+    let email: String
+}
+
+// Build a parameterized query using the DSL
+let userQuery: SQLQuery<UserParams> = SQLQuery {
+    "SELECT * FROM users WHERE id ="
+    param(\.id)
+    "AND email ="
+    param(\.email, named: "email")
+}
+
+// Execute the query
+let params = UserParams(id: 1, email: "alice@example.com")
+let result = try db.reader.execute(userQuery, params)
+
+// Access results using dynamic member lookup
+for row in result {
+    if let name: String = row.name,
+       let email: String = row.email {
+        print("Found user: \(name) - \(email)")
+    }
+}
+```
+
+#### Using String Interpolation
+
+`SQLQuery` also supports string interpolation for simpler queries:
+
+```swift
+// Direct value interpolation
+let count: Int = 42
+let insertQuery: SQLStaticQuery = """
+    INSERT INTO counter (count) VALUES (\(count))
+"""
+
+// Key path interpolation
+struct Product {
+    var id: UUID
+    var name: String
+    var price: Double
+}
+
+let product = Product(id: UUID(), name: "Widget", price: 19.99)
+let productQuery: SQLQuery<Product> = """
+    INSERT INTO products (id, name, price)
+    VALUES (\(\.id), \(\.name), \(\.price))
+"""
+
+// Closure-based interpolation
+let updateQuery: SQLQuery<Product> = """
+    UPDATE products
+    SET price = \({ $0.price * 1.1 })
+    WHERE id = \(\.id)
+"""
+```
+
+#### Complex Queries with Arrays
+
+```swift
+struct SearchParams {
+    let userIds: [Int]
+    let status: String
+}
+
+let searchQuery: SQLQuery<SearchParams> = SQLQuery {
+    "SELECT * FROM orders WHERE user_id IN"
+    param(\.userIds)
+    "AND status ="
+    param(\.status)
+}
+
+// The IN clause is automatically rewritten to use json_each
+let params = SearchParams(userIds: [1, 2, 3, 4], status: "completed")
+let results = try db.reader.execute(searchQuery, params)
+```
+
+#### Working with Query Results
+
+```swift
+let query: SQLStaticQuery = "SELECT id, name, email FROM users"
+let result = try db.reader.execute(query)
+
+// Access metadata
+print("Rows returned: \(result.count)")
+print("Affected rows: \(result.affectedRows)")
+print("Last insert ID: \(result.lastInsertedRowID ?? -1)")
+
+// Iterate over rows
+for row in result {
+    // Access by column name with type casting
+    if let id: Int = row["id"],
+       let name: String = row["name"],
+       let email: String = row["email"] {
+        print("User \(id): \(name) <\(email)>")
+    }
+    
+    // Or use dynamic member lookup
+    let id: Int? = row.id
+    let name: String? = row.name
+}
+```
+
+### Transactions
+
+Use transactions to ensure atomicity of multiple operations:
+
+```swift
+try db.writer.begin()
+do {
+    try db.writer.exec("INSERT INTO users (name) VALUES ('Alice')")
+    try db.writer.exec("INSERT INTO users (name) VALUES ('Bob')")
+    try db.writer.commit()
+} catch {
+    try db.writer.rollback()
+    throw error
+}
+
+// Savepoints for nested transactions
+try db.writer.begin(savepoint: "sp1")
+try db.writer.exec("INSERT INTO users (name) VALUES ('Charlie')")
+try db.writer.commit(savepoint: "sp1")
+```
+
+### SQLCipherStore - State Container with Undo/Redo
+
+`SQLCipherStore` provides a Redux-style state container with automatic persistence, undo/redo support, and command-style actions.
+
+#### Basic State Management
+
+```swift
+import SQLCipher
+
+// Define your state type (must conform to Stored, Equatable, and Codable)
+struct AppState: Codable, Equatable, Stored {
+    var counter: Int
+    var userName: String
+    var preferences: UserPreferences
+}
+
+struct UserPreferences: Codable, Equatable, Stored {
+    var theme: String
+    var notifications: Bool
+}
+
+// Initialize the store
+let db = try SQLCipher(path: dbPath, key: encryptionKey)
+let initialState = AppState(
+    counter: 0,
+    userName: "Guest",
+    preferences: UserPreferences(theme: "light", notifications: true)
+)
+
+// Create store with automatic persistence of the entire state
+let store = SQLCipherStore(db: db, state: initialState)
+
+// Access state directly or via dynamic member lookup
+print("Counter: \(store.state.counter)")
+print("Counter: \(store.counter)")  // Same as above
+```
+
+#### Updating State
+
+Updates are transactional and can be undoable, pending, critical, or partial:
+
+```swift
+// Undoable update - can be undone/redone
+await store.update(.undoable) { state, db in
+    state.counter += 1
+    state.userName = "Alice"
+}
+
+// Pending update - persisted but part of a larger undoable group
+await store.update(.pending) { state, db in
+    state.preferences.theme = "dark"
+}
+
+// Critical update - forms a new baseline, cannot be undone
+await store.update(.critical) { state, db in
+    state.userName = "Administrator"
+}
+
+// Partial update - not persisted, part of an in-progress operation
+await store.update(.partial) { state, db in
+    state.counter += 1  // Temporary change
+}
+
+// Fire-and-forget update (doesn't await completion)
+store.update(.undoable) { state, db in
+    state.counter += 1
+}
+
+// Update with return value
+let newCount = await store.update(.undoable) { state, db in
+    state.counter += 1
+    return state.counter
+}
+print("New count: \(newCount ?? 0)")
+
+// Update with error handling
+do {
+    try await store.tryUpdate(.undoable) { state, db in
+        if state.counter < 0 {
+            throw NSError(domain: "InvalidState", code: 1)
+        }
+        state.counter += 1
+        return state.counter
+    }
+} catch {
+    print("Update failed: \(error)")
+}
+```
+
+#### Undo/Redo Support
+
+```swift
+// Check if undo/redo is available
+if store.canUndo {
+    store.undo()
+}
+
+if store.canRedo {
+    store.redo()
+}
+
+// Configure undo levels (default is 50)
+store.levelsOfUndo = 100
+
+// Example undo/redo workflow
+await store.update(.undoable) { state, db in
+    state.counter = 10
+}
+
+await store.update(.undoable) { state, db in
+    state.counter = 20
+}
+
+print(store.counter)  // 20
+
+store.undo()
+print(store.counter)  // 10
+
+store.undo()
+print(store.counter)  // 0 (initial state)
+
+store.redo()
+print(store.counter)  // 10
+```
+
+#### Persistent Substates
+
+For larger state objects, you can persist only specific substates independently:
+
+```swift
+struct AppState {
+    var counter: Int  // Not persisted
+    var address: Address  // Persisted as substate
+    var contacts: Contacts  // Persisted as substate
+}
+
+struct Address: Codable, Equatable, Stored {
+    var street: String
+    var city: String
+    var zip: String
+}
+
+struct Contacts: Codable, Equatable, Stored {
+    var emails: [String]
+    var phoneNumbers: [String]
+}
+
+// Create store with specific substates
+let store = SQLCipherStore(
+    db: db,
+    state: initialState,
+    substates: [
+        Substate(\.address),
+        Substate(\.contacts)
+    ]
+)
+
+// Updates automatically persist only the changed substates
+await store.update(.undoable) { state, db in
+    state.address.zip = "90210"
+    // Only address is persisted, counter changes are not
+}
+```
+
+#### Database Operations in State Updates
+
+You can perform database operations within state update closures. All operations are part of the same transaction:
+
+```swift
+await store.update(.undoable) { state, db in
+    // Update in-memory state
+    state.counter += 1
+    
+    // Perform database operations using raw SQL
+    // Note: String interpolation works directly with exec() for raw SQL
+    try db.exec("""
+        INSERT INTO events (counter_value, timestamp)
+        VALUES (\(state.counter), datetime('now'))
+    """)
+    
+    // Query related data using static queries
+    let countQuery: SQLStaticQuery = "SELECT COUNT(*) as count FROM events"
+    let result = try db.execute(countQuery)
+    if let count: Int = result.first?.count {
+        print("Total events: \(count)")
+    }
+    
+    // Or use parameterized queries for reusable queries
+    struct EventParams {
+        let counter: Int
+    }
+    let insertQuery: SQLQuery<EventParams> = """
+        INSERT INTO events (counter_value, timestamp)
+        VALUES (\(\.counter), datetime('now'))
+    """
+    try db.execute(insertQuery, EventParams(counter: state.counter))
+    
+    // For raw SQL with dynamic values, string interpolation captures the value at execution time
+    try db.exec("""
+        INSERT INTO logs (message, timestamp)
+        VALUES ('Counter is now \(state.counter)', datetime('now'))
+    """)
+}
+
+// All database operations are part of the same transaction
+// If any operation fails, the entire update is rolled back
+```
+
+### SQLAction - Command Pattern
+
+For a cleaner separation of concerns, you can define actions that encapsulate state updates:
+
+```swift
+struct IncrementCounterAction: SQLAction {
+    let amount: Int
+    
+    typealias State = AppState
+    
+    var type: UpdateType {
+        .undoable
+    }
+    
+    func update(state: inout AppState, db: SQLConnection) throws {
+        state.counter += amount
+        
+        // Actions can also perform database operations
+        let query: SQLStaticQuery = """
+            INSERT INTO counter_history (value, change, timestamp)
+            VALUES (\(state.counter), \(amount), datetime('now'))
+        """
+        try db.execute(query)
+    }
+}
+
+struct ChangeThemeAction: SQLAction {
+    let theme: String
+    
+    typealias State = AppState
+    
+    func update(state: inout AppState, db: SQLConnection) throws {
+        state.preferences.theme = theme
+    }
+}
+
+// Dispatch actions
+let store = SQLCipherStore(db: db, state: initialState)
+
+// Await completion
+await store.dispatch(IncrementCounterAction(amount: 5))
+
+// Fire-and-forget
+store.dispatch(ChangeThemeAction(theme: "dark"))
+
+// Actions automatically use their declared UpdateType
+```
+
+#### Action with Critical Update
+
+```swift
+struct ResetStoreAction: SQLAction {
+    typealias State = AppState
+    
+    var type: UpdateType {
+        .critical  // Cannot be undone
+    }
+    
+    func update(state: inout AppState, db: SQLConnection) throws {
+        state.counter = 0
+        state.userName = "Guest"
+        
+        // Critical actions often involve database cleanup
+        try db.exec("DELETE FROM counter_history")
+    }
+}
+
+await store.dispatch(ResetStoreAction())
+// State is reset, and this cannot be undone
+```
+
+### Integration with SwiftUI
+
+`SQLCipherStore` is `@Observable`, making it perfect for SwiftUI integration:
+
+```swift
+import SwiftUI
+
+@main
+struct MyApp: App {
+    let store: SQLCipherStore<AppState>
+    
+    init() {
+        let db = try! SQLCipher(path: dbPath, key: encryptionKey)
+        let initialState = AppState(counter: 0, userName: "Guest", preferences: UserPreferences(theme: "light", notifications: true))
+        self.store = SQLCipherStore(db: db, state: initialState)
+    }
+    
+    var body: some Scene {
+        WindowGroup {
+            ContentView(store: store)
+        }
+    }
+}
+
+struct ContentView: View {
+    let store: SQLCipherStore<AppState>
+    
+    var body: some View {
+        VStack {
+            Text("Counter: \(store.counter)")
+            
+            Button("Increment") {
+                store.update(.undoable) { state, db in
+                    state.counter += 1
+                }
+            }
+            
+            Button("Undo") {
+                store.undo()
+            }
+            .disabled(!store.canUndo)
+            
+            Button("Redo") {
+                store.redo()
+            }
+            .disabled(!store.canRedo)
+        }
+    }
+}
+```
 
 ## Migration and Upgrades
 
