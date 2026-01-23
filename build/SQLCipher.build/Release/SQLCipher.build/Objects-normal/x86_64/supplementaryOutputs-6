@@ -1,0 +1,12 @@
+{
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/Core/SQLAction.swift" : {
+    "abi-baseline-json" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/x86_64/SQLCipher.abi.json",
+    "const-values" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/x86_64/SQLCipher-primary.swiftconstvalues",
+    "dependencies" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/x86_64/SQLCipher-primary.d",
+    "diagnostics" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/x86_64/SQLCipher-primary.dia",
+    "objc-header" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/x86_64/SQLCipher-Swift.h",
+    "swiftdoc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/x86_64/SQLCipher.swiftdoc",
+    "swiftmodule" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/x86_64/SQLCipher.swiftmodule",
+    "swiftsourceinfo" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/x86_64/SQLCipher.swiftsourceinfo"
+  }
+}

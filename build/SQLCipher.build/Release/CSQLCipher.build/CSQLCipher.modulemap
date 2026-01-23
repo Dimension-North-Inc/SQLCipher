@@ -1,0 +1,4 @@
+module CSQLCipher {
+umbrella "/Users/mark/Developer/Packages/SQLCypher/Sources/CSQLCipher/include"
+export *
+}

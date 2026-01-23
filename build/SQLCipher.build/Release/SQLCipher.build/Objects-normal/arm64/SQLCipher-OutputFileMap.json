@@ -1,0 +1,66 @@
+{
+  "" : {
+    "const-values" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipher-primary.swiftconstvalues",
+    "dependencies" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipher-primary.d",
+    "diagnostics" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipher-primary.dia",
+    "emit-module-dependencies" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipher-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipher-primary-emit-module.dia",
+    "pch" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipher-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipher-primary.swiftdeps"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/Core/SQLAction.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLAction.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLAction.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLAction.o"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/Core/SQLConnection.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLConnection.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLConnection.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLConnection.o"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/Core/SQLQuery.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLQuery.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLQuery.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLQuery.o"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/Core/SQLResult.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLResult.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLResult.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLResult.o"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/Core/SQLRow.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLRow.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLRow.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLRow.o"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/Core/SQLValue.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLValue.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLValue.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLValue.o"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/SQLCipher.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipher.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipher.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipher.o"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/SQLCipherStore.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipherStore.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipherStore.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/SQLCipherStore.o"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/Types/Errors.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/Errors.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/Errors.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/Errors.o"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/Types/Stored.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/Stored.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/Stored.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/Stored.o"
+  },
+  "/Users/mark/Developer/Packages/SQLCypher/Sources/SQLCipher/Types/Substate.swift" : {
+    "index-unit-output-path" : "/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/Substate.o",
+    "llvm-bc" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/Substate.bc",
+    "object" : "/Users/mark/Developer/Packages/SQLCypher/build/SQLCipher.build/Release/SQLCipher.build/Objects-normal/arm64/Substate.o"
+  }
+}

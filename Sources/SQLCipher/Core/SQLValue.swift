@@ -254,14 +254,12 @@ extension Bool: SQLValueRepresentable {
 }
 
 extension Date: SQLValueRepresentable {
-    /// An SQLite-compatible ISO 8601 date format.
-    private static let sqliteFormat = ISO8601FormatStyle
-        .iso8601
+    /// An SQLite-compatible ISO 8601 date format (full datetime).
+    private static let sqliteFormat = ISO8601FormatStyle()
         .dateSeparator(.dash)
         .timeSeparator(.colon)
         .dateTimeSeparator(.standard)
-        .time(includingFractionalSeconds: true)
-    
+
     public var sqliteValue: SQLValue {
         .text(self.formatted(Self.sqliteFormat))
     }

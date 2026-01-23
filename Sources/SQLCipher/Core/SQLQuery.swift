@@ -369,6 +369,12 @@ extension SQLQuery: ExpressibleByStringInterpolation {
         ) {
             fragments.append(param(valueProvider))
         }
+
+        /// Inserts a raw string value without parameterization.
+        /// Useful for FTS5 queries that need literal string values (e.g., quoted UUIDs).
+        public mutating func appendInterpolation(raw value: String) {
+            fragments.append(.raw(value))
+        }
     }
     
     public init(stringLiteral value: String) {
