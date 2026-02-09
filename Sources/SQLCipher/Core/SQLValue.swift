@@ -136,7 +136,7 @@ extension SQLValue {
         case .text(let value):
             result = sqlite3_bind_text(statement, index, value, -1, SQLITE_TRANSIENT)
         case .blob(let value):
-            result = sqlite3_bind_blob(statement, index, (value as NSData).bytes, Int32(value.count), SQLITE_TRANSIENT)
+            result = sqlite3_bind_blob(statement, index, (value as NSData).bytes, Int(value.count), SQLITE_TRANSIENT)
         case .null:
             result = sqlite3_bind_null(statement, index)
         case .array(let values):
