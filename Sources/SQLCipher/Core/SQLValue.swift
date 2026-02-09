@@ -136,7 +136,16 @@ extension SQLValue {
         case .text(let value):
             result = sqlite3_bind_text(statement, index, value, -1, SQLITE_TRANSIENT)
         case .blob(let value):
-            result = sqlite3_bind_blob(statement, index, (value as NSData).bytes, Int(value.count), SQLITE_TRANSIENT)
+            // SQLite uses int32_t for blob size - blobs cannot exceed 2GB
+            // Large files (video > 2GB) should be stored externally, not in database
+            let byteCount = value.count
+            guard byteCount <= Int(Int32.max) else {
+                throw SQLiteError.general(
+                    code: SQLITE_TOOBIG,
+                    message: "Blob size (\(byteCount) bytes) exceeds SQLite's 2GB limit"
+                )
+            }
+            result = sqlite3_bind_blob(statement, index, (value as NSData).bytes, Int32(byteCount), SQLITE_TRANSIENT)
         case .null:
             result = sqlite3_bind_null(statement, index)
         case .array(let values):
