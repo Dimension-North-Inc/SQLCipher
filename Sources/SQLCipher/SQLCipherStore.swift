@@ -171,14 +171,9 @@ extension SQLCipherStore {
                         }
                     case .critical:
                         try Self.saveSubstates(substates, states: (old: old, new: new), update: .critical, db: db)
-                        updates = updates[0...current] + [.undoable(new)]
-                        current += 1
-                        let maximumUpdateLength = levelsOfUndo + 1
-                        if updates.count > maximumUpdateLength {
-                            let excessUpdates = updates.count - maximumUpdateLength
-                            updates.removeFirst(excessUpdates)
-                            current -= excessUpdates
-                        }
+                        // Reset undo stack - critical forms a new baseline that cannot be undone
+                        updates = [.undoable(new)]
+                        current = 0
                     case .pending:
                         // Don't persist pending updates - they remain in-memory only
                         if updates[current].type == .pending {
