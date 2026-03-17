@@ -223,4 +223,50 @@ extension SQLCipherTests {
         #expect(storeDefault.state.address.zip == "90210") // unchanged, separate from custom keys
     }
 
+    @Test
+    func testCipherStoreCriticalClearsUndoStack() async throws {
+        let initial = Customer(
+            name: "Johnny Appleseed",
+            address: Address(
+                street: "1 Infinite Loop",
+                city: "Cupertino",
+                state: "CA",
+                zip: "90210"
+            ),
+            contacts: Contacts(
+                emails: ["johnny_appleseed@apple.com"],
+                phoneNumbers: []
+            )
+        )
+
+        let path = tempDBPath()
+        let db = try SQLCipher(path: path)
+        let store = SQLCipherStore(db: db, state: initial, substates: [Substate(\.address), Substate(\.contacts)])
+
+        // Make undoable changes: v0 -> v1 -> v2
+        await store.update(.undoable) { customer, _ in
+            customer.address.city = "San Jose"
+        }
+        #expect(store.state.address.city == "San Jose")
+        #expect(store.canUndo == true)
+
+        await store.update(.undoable) { customer, _ in
+            customer.address.state = "NY"
+        }
+        #expect(store.state.address.state == "NY")
+        #expect(store.canUndo == true)
+
+        // Now make a .critical change - should clear undo stack
+        await store.update(.critical) { customer, _ in
+            customer.address.zip = "10001"
+        }
+        #expect(store.state.address.zip == "10001")
+        #expect(store.canUndo == false) // undo stack should be cleared
+
+        // Undo should do nothing since stack was cleared
+        store.undo()
+        #expect(store.state.address.zip == "10001") // unchanged
+        #expect(store.state.address.state == "NY") // still NY from before critical
+    }
+
 }
