@@ -180,7 +180,7 @@ extension SQLCipherStore {
                             current -= excessUpdates
                         }
                     case .pending:
-                        try Self.saveSubstates(substates, states: (old: old, new: new), update: .pending, db: db)
+                        // Don't persist pending updates - they remain in-memory only
                         if updates[current].type == .pending {
                             updates[current] = .pending(new)
                         } else {
