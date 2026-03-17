@@ -88,8 +88,11 @@ open class SQLCipherStore<State: Sendable>: @unchecked Sendable {
     /// - Parameters:
     ///   - db: The SQLCipher database to use for persistence.
     ///   - state: The initial state value, which must conform to `Stored`.
-    public convenience init(db: SQLCipher, state: State) where State: Stored {
-        self.init(db: db, state: state, substates: [Substate(\.self)])
+    ///   - rootKey: The key used to store this state's data in the database. Defaults to the
+    ///              type's `storageKey`. Override to support multiple peer stores with custom keys.
+    public convenience init(db: SQLCipher, state: State, rootKey: String? = nil) where State: Stored {
+        let key = rootKey ?? State.storageKey
+        self.init(db: db, state: state, substates: [Substate(key: key, \.self)])
     }
 
     /// Provides dynamic member lookup for the current state.

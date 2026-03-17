@@ -76,7 +76,7 @@ extension SQLCipherTests {
         var phoneNumbers: [String]
     }
     
-    struct Customer: Equatable {
+    struct Customer: Codable, Equatable, Sendable, Stored {
         var name: String
         var address: Address
         var contacts: Contacts
@@ -166,6 +166,61 @@ extension SQLCipherTests {
 
         #expect(store3.state.address.zip == "12345")
         #expect(store3.state.contacts.emails == ["johnny_appleseed@gmail.com"])
+    }
+
+    @Test
+    func testCipherStoreCustomRootKey() async throws {
+        let initial = Customer(
+            name: "Johnny Appleseed",
+            address: Address(
+                street: "1 Infinite Loop",
+                city: "Cupertino",
+                state: "CA",
+                zip: "90210"
+            ),
+            contacts: Contacts(
+                emails: ["johnny_appleseed@apple.com"],
+                phoneNumbers: []
+            )
+        )
+
+        let path = tempDBPath()
+        let db = try SQLCipher(path: path)
+
+        // Create two peer stores with different root keys
+        let storeA = SQLCipherStore(db: db, state: initial, rootKey: "customer_a")
+        let storeB = SQLCipherStore(db: db, state: initial, rootKey: "customer_b")
+
+        #expect(storeA.state.name == "Johnny Appleseed")
+        #expect(storeB.state.name == "Johnny Appleseed")
+
+        // Modify storeA
+        await storeA.update(.undoable) { customer, _ in
+            customer.address.zip = "11111"
+        }
+
+        // Modify storeB with different data
+        await storeB.update(.undoable) { customer, _ in
+            customer.address.zip = "99999"
+            customer.contacts.emails = ["johnny@icloud.com"]
+        }
+
+        #expect(storeA.state.address.zip == "11111")
+        #expect(storeB.state.address.zip == "99999")
+        #expect(storeB.state.contacts.emails == ["johnny@icloud.com"])
+
+        // Verify they're stored independently by creating new stores
+        let db2 = try SQLCipher(path: path)
+        let storeA2 = SQLCipherStore(db: db2, state: initial, rootKey: "customer_a")
+        let storeB2 = SQLCipherStore(db: db2, state: initial, rootKey: "customer_b")
+
+        #expect(storeA2.state.address.zip == "11111")
+        #expect(storeB2.state.address.zip == "99999")
+        #expect(storeB2.state.contacts.emails == ["johnny@icloud.com"])
+
+        // Verify default rootKey still works (uses type name)
+        let storeDefault = SQLCipherStore(db: db2, state: initial)
+        #expect(storeDefault.state.address.zip == "90210") // unchanged, separate from custom keys
     }
 
 }
