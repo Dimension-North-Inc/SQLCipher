@@ -25,25 +25,23 @@ public protocol SQLAction<State>: Sendable {
     func update(state: inout State, db: SQLConnection) throws
     
     /// Specifies the update's persistence and undo behavior.
-    /// Defaults to `.pending` if not overridden.
+    /// Defaults to `.partial` if not overridden.
     var type: UpdateType { get }
 }
 
 extension SQLAction {
     public var type: UpdateType {
-        return .pending
+        return .partial
     }
 }
 
 /// Defines the persistence and undo behavior of an `SQLAction`.
 public enum UpdateType: Sendable {
-    /// An unpersisted update meant to be part of a larger update
+    /// An unpersisted update - in-memory only (e.g., slider drag, intermediate state)
     case partial
-    /// An immediately persisted update that forms part of a larger undoable group.
-    case pending
-    /// An immediately persisted update which can be undone to some earlier state..
+    /// An immediately persisted update which can be undone to some earlier state.
     case undoable
-    /// An immediately persisted update which forms a new state baseline that can not be undone..
+    /// An immediately persisted update which forms a new state baseline that cannot be undone.
     case critical
 }
 

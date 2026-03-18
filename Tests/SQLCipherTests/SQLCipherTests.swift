@@ -143,7 +143,7 @@ extension SQLCipherTests {
         #expect(store.state.contacts.emails == ["johnny_appleseed@apple.com"])
         
         // Await the update to ensure it completes before checking state
-        await store.update(.pending) { customer, db in
+        await store.update(.partial) { customer, db in
             customer.address.zip = "12345"
         }
 

@@ -43,8 +43,8 @@ open class SQLCipherStore<State: Sendable>: @unchecked Sendable {
         static func undoable(_ state: State) -> Self {
             .init(state: state, type: .undoable)
         }
-        static func pending(_ state: State) -> Self {
-            .init(state: state, type: .pending)
+        static func partial(_ state: State) -> Self {
+            .init(state: state, type: .partial)
         }
     }
 
@@ -147,7 +147,7 @@ extension SQLCipherStore {
                     // 3. Substate management
                     switch type {
                     case .undoable:
-                        if updates[current].type == .pending {
+                        if updates[current].type == .partial {
                             let lastUndoableIdx = (0...current).reversed().first(where: { updates[$0].type == .undoable }) ?? 0
                             let lastUndoable = updates[lastUndoableIdx].state
                             try Self.saveSubstates(substates, states: (old: lastUndoable, new: new), update: .undoable, db: db)
@@ -174,20 +174,20 @@ extension SQLCipherStore {
                         // Reset undo stack - critical forms a new baseline that cannot be undone
                         updates = [.undoable(new)]
                         current = 0
-                    case .pending:
+                    case .partial:
                         // Don't persist pending updates - they remain in-memory only
-                        if updates[current].type == .pending {
-                            updates[current] = .pending(new)
+                        if updates[current].type == .partial {
+                            updates[current] = .partial(new)
                         } else {
-                            updates = updates[0...current] + [.pending(new)]
+                            updates = updates[0...current] + [.partial(new)]
                             current += 1
                         }
                     
                     case .partial:
-                        if updates[current].type == .pending {
-                            updates[current] = .pending(new)
+                        if updates[current].type == .partial {
+                            updates[current] = .partial(new)
                         } else {
-                            updates = updates[0...current] + [.pending(new)]
+                            updates = updates[0...current] + [.partial(new)]
                             current += 1
                         }
                     }
@@ -357,7 +357,7 @@ extension SQLCipherStore {
         db: SQLCipher
     ) throws {
         switch update {
-        case .undoable, .pending:
+        case .undoable, .partial:
             for substate in substates {
                 let old = substate.read(from: states.old)
                 let new = substate.read(from: states.new)
