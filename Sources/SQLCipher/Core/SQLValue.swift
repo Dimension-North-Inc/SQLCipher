@@ -26,6 +26,9 @@ public enum SQLValue: Hashable {
     /// Null value representing an absence of data.
     case null
 
+    /// Vector of values for use with sqlite-vec.
+    case vector(VectorElementType, Data)
+
     /// Array of `SQLValue` elements.
     ///
     /// This case is primarily used to represent a collection of values that can be
@@ -39,11 +42,6 @@ public enum SQLValue: Hashable {
     /// db.execute("SELECT * FROM users WHERE id IN (:values)", parameters: ["values": values])
     /// ```
     indirect case array([SQLValue])
-
-    /// Vector of floating-point values for use with sqlite-vec.
-    ///
-    /// Vectors are stored as a tuple of element type and packed blob data.
-    case vector(VectorElementType, Data)
 }
 
 /// Element types supported by sqlite-vec for vector storage.
@@ -462,8 +460,9 @@ extension Array: SQLValueRepresentable where Element: SQLValueRepresentable {
 public struct Vector<Value: SQLVectorType>: SQLValueRepresentable, Hashable {
     public let elements: [Value]
 
-    public init(_ elements: [Value]) {
-        self.elements = elements
+    
+    public init(_ elements: any Collection<Value>) {
+        self.elements = Array(elements)
     }
 
     public init?(sqliteValue: SQLValue) {
