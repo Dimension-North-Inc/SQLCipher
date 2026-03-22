@@ -281,6 +281,20 @@ extension Float: SQLVectorType {
     }
 }
 
+/// Int8 extension for sqlite-vec int8 vector storage.
+/// Stores elements as raw Int8 bytes.
+extension Int8: SQLVectorType {
+    public static let elementType = VectorElementType.int8
+
+    public static func pack(_ elements: [Int8]) -> Data {
+        Data(elements.map { UInt8(bitPattern: $0) })
+    }
+
+    public static func unpack(_ data: Data) -> [Int8] {
+        data.map { Int8(bitPattern: $0) }
+    }
+}
+
 extension Double: SQLValueRepresentable {
     public var sqliteValue: SQLValue { .real(self) }
     

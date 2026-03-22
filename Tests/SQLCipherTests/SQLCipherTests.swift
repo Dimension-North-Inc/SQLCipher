@@ -433,6 +433,72 @@ extension SQLCipherTests {
         #expect(Float.elementType == .float32)
     }
 
+    // MARK: - Int8 SQLVectorType Tests
+
+    @Test
+    func testInt8PackProducesRawBytes() {
+        // Int8 should be packed as raw bytes (signed byte representation)
+        let elements: [Int8] = [0, 1, -1, 127, -128]
+        let packed = Int8.pack(elements)
+
+        #expect(packed.count == 5) // 5 Int8 bytes
+
+        // Verify raw byte representation
+        // 0 -> 0x00, 1 -> 0x01, -1 -> 0xFF, 127 -> 0x7F, -128 -> 0x80
+        let expected: [UInt8] = [0x00, 0x01, 0xFF, 0x7F, 0x80]
+        #expect(packed.elementsEqual(expected))
+    }
+
+    @Test
+    func testInt8UnpackReversesPacking() {
+        // Create raw Int8 bytes manually
+        // 0 -> 0x00, 1 -> 0x01, -1 -> 0xFF, 127 -> 0x7F, -128 -> 0x80
+        let data = Data([0x00, 0x01, 0xFF, 0x7F, 0x80])
+
+        let unpacked = Int8.unpack(data)
+
+        #expect(unpacked.count == 5)
+        #expect(unpacked[0] == 0)
+        #expect(unpacked[1] == 1)
+        #expect(unpacked[2] == -1)
+        #expect(unpacked[3] == 127)
+        #expect(unpacked[4] == -128)
+    }
+
+    @Test
+    func testInt8PackUnpackRoundTrip() {
+        // Test that packing and unpacking preserves values exactly
+        let original: [Int8] = [0, -1, 1, 127, -128, 42, -42, 100, -100]
+        let packed = Int8.pack(original)
+        let unpacked = Int8.unpack(packed)
+
+        #expect(unpacked.count == original.count)
+        for (original, recovered) in zip(original, unpacked) {
+            #expect(original == recovered)
+        }
+    }
+
+    @Test
+    func testInt8PackEmptyArray() {
+        let empty: [Int8] = []
+        let packed = Int8.pack(empty)
+        #expect(packed.isEmpty)
+        #expect(packed.count == 0)
+    }
+
+    @Test
+    func testInt8UnpackEmptyData() {
+        let emptyData = Data()
+        let unpacked = Int8.unpack(emptyData)
+        #expect(unpacked.isEmpty)
+    }
+
+    @Test
+    func testInt8ElementType() {
+        // Verify Int8 conforms to SQLVectorType with correct element type
+        #expect(Int8.elementType == .int8)
+    }
+
     @Test
     func testVecInsertAndSearch() throws {
         let path = tempDBPath()
