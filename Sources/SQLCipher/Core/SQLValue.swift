@@ -57,6 +57,23 @@ public enum VectorElementType: Int {
     public var sqliteSubtype: Int32 { Int32(rawValue) }
 }
 
+/// A type that can be used as the element type for a vector.
+/// Conforming types provide packing and unpacking logic for storing
+/// vector data as blobs in SQLite.
+public protocol SQLVectorType {
+    /// The underlying collection type for vector elements.
+    associatedtype ElementCollection: Sequence where ElementCollection.Element: SQLValueRepresentable
+
+    /// The sqlite-vec element type for this vector type.
+    static var elementType: VectorElementType { get }
+
+    /// Packs an array of elements into Data for blob storage.
+    static func pack(_ elements: [ElementCollection.Element]) -> Data
+
+    /// Unpacks Data back into an array of elements.
+    static func unpack(_ data: Data) -> [ElementCollection.Element]
+}
+
 extension SQLValue: CustomStringConvertible {
     public var description: String {
         switch self {
