@@ -39,13 +39,12 @@ public protocol SQLVectorType {
 }
 ```
 
-### 3. Concrete Type Conformances
+### 3. Concrete Type Conformances (via Swift Extensions)
 
-**Float32** — stores as big-endian Float32 bytes:
+**Float** — stores as big-endian Float32 bytes (Swift's Float is Float32):
 
 ```swift
-public struct Float32: SQLVectorType {
-    public typealias Storage = Float
+extension Float: SQLVectorType {
     public static let elementType = VectorElementType.float32
 
     public static func pack(_ elements: [Float]) -> Data {
@@ -61,8 +60,7 @@ public struct Float32: SQLVectorType {
 **Int8** — stores as raw Int8 bytes:
 
 ```swift
-public struct Int8: SQLVectorType {
-    public typealias Storage = Int8
+extension Int8: SQLVectorType {
     public static let elementType = VectorElementType.int8
 
     public static func pack(_ elements: [Int8]) -> Data { ... }
@@ -70,11 +68,10 @@ public struct Int8: SQLVectorType {
 }
 ```
 
-**Bit** — stores `[Bool]` packed into bits:
+**Bool** — stores `[Bool]` packed into bits for bit vectors:
 
 ```swift
-public struct Bit: SQLVectorType {
-    public typealias Storage = Bool
+extension Bool: SQLVectorType {
     public static let elementType = VectorElementType.bit
 
     public static func pack(_ elements: [Bool]) -> Data {
@@ -92,9 +89,9 @@ public struct Bit: SQLVectorType {
 
 ```swift
 public struct Vector<Value: SQLVectorType>: SQLValueRepresentable, Hashable {
-    public let elements: [Value.Storage.Element]
+    public let elements: [Value]
 
-    public init(_ elements: [Value.Storage.Element]) {
+    public init(_ elements: [Value]) {
         self.elements = elements
     }
 
@@ -142,8 +139,8 @@ When reading a vector back, the subtype is not automatically available from `sql
 ## Breaking Changes
 
 - `SQLValue.vector([Float])` is removed
-- `Vector` (unparameterized) is removed — use `Vector<Float32>`
-- `Vector<Float>` no longer works — use `Vector<Float32>`
+- `Vector` (unparameterized) is removed — use `Vector<Float>`, `Vector<Int8>`, or `Vector<Bool>`
+- `Vector<Float>` now uses blob storage (previously JSON string)
 
 ## Files Affected
 
@@ -151,8 +148,8 @@ When reading a vector back, the subtype is not automatically available from `sql
 
 ## Test Plan
 
-1. Insert `Vector<Float32>` and query back, verify byte-for-byte equality
+1. Insert `Vector<Float>` and query back, verify byte-for-byte equality
 2. Insert `Vector<Int8>` and query back
-3. Insert `Vector<Bit>` with `[Bool]` and query back, verify bit packing
+3. Insert `Vector<Bool>` with `[Bool]` and query back, verify bit packing
 4. Verify `vec_distance_cosine` works with inserted blob vectors
 5. Verify old `SQLValue.vector` cases are handled (compile error for removed case)

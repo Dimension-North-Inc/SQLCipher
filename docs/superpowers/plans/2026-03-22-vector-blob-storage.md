@@ -479,7 +479,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>"
 
 ---
 
-## Task 8: Add Vector Integration Tests
+## Task 9: Add Vector Integration Tests
 
 **Files:**
 - Modify: `Tests/SQLCipherTests/SQLCipherTests.swift`
