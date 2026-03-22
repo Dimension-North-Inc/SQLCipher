@@ -262,6 +262,117 @@ try db.writer.exec("INSERT INTO users (name) VALUES ('Charlie')")
 try db.writer.commit(savepoint: "sp1")
 ```
 
+### FTS5 - Full-Text Search
+
+SQLCipher includes built-in support for FTS5 (Full-Text Search), enabling powerful text search capabilities:
+
+```swift
+// Create an FTS5 virtual table
+try db.writer.exec("""
+    CREATE VIRTUAL TABLE articles USING fts5(title, content, tokenize='porter');
+    """)
+
+// Insert content
+try db.writer.exec("""
+    INSERT INTO articles (title, content) VALUES
+        ('Apple Silicon', 'M-series chips provide industry-leading performance'),
+        ('Machine Learning', 'Apple Neural Engine accelerates ML workloads'),
+        ('Swift Language', 'Swift is a powerful programming language');
+    """)
+
+// Full-text search using MATCH
+let results = try db.reader.execute("""
+    SELECT title, rank FROM articles WHERE articles MATCH 'Apple'
+    ORDER BY rank
+    """)
+```
+
+### Vector Search - Embedding Storage and Similarity
+
+SQLCipher supports vector storage and similarity search via the sqlite-vec extension, automatically registered when the library is loaded.
+
+#### The Vector Type
+
+The `Vector` type wraps a `[Float]` array and conforms to `SQLValueRepresentable`, enabling seamless use with the query builder:
+
+```swift
+// Create vectors directly from array literals
+let embedding = Vector([0.1, 0.5, -0.3, 0.8])
+
+// Or from an array
+let array: [Float] = [0.1, 0.5, -0.3, 0.8]
+let embedding2 = Vector(array)
+```
+
+#### Creating a Vector Table
+
+Create a virtual table with a vector column specifying the element type and dimensions:
+
+```swift
+// 384-dimensional float embeddings (common for embedding models)
+try db.writer.exec("""
+    CREATE VIRTUAL TABLE embeddings USING vec0(
+        id INTEGER PRIMARY KEY,
+        headline_embedding float[384]
+    );
+    """)
+```
+
+#### Inserting Vectors
+
+Use parameterized queries with the `Vector` type:
+
+```swift
+struct EmbeddingParams {
+    var id: Int
+    var vector: Vector
+}
+
+let insertQuery: SQLQuery<EmbeddingParams> = """
+    INSERT INTO embeddings (id, headline_embedding)
+    VALUES (\(\.id), \(\.vector))
+    """
+
+try db.writer.execute(insertQuery, EmbeddingParams(id: 1, vector: Vector([0.1, 0.2, ...])))
+try db.writer.execute(insertQuery, EmbeddingParams(id: 2, vector: Vector([0.5, 0.1, ...])))
+```
+
+#### Searching for Similar Vectors
+
+Perform K-nearest-neighbors search using the MATCH operator with your query vector:
+
+```swift
+struct SearchParams {
+    var query: Vector
+}
+
+let searchQuery: SQLQuery<SearchParams> = """
+    SELECT id, distance FROM embeddings
+    WHERE headline_embedding MATCH \(\.query) AND k = 5
+    ORDER BY distance
+    """
+
+let queryEmbedding = Vector([0.1, 0.2, ...]) // Your search query
+let results = try db.reader.execute(searchQuery, SearchParams(query: queryEmbedding))
+
+for row in results {
+    if let id: Int = row.id,
+       let distance: Double = row.distance {
+        print("ID: \(id), distance: \(distance)")
+    }
+}
+```
+
+#### Key Vector Functions
+
+| Function | Description |
+|----------|-------------|
+| `vec_distance_cosine(a, b)` | Calculates cosine distance between vectors |
+| `vec_distance_L2(a, b)` | Calculates Euclidean (L2) distance |
+| `vec_normalize(vector)` | L2 normalization for Matryoshka embeddings |
+| `vec_to_json(vector)` | Converts vector BLOB to readable JSON string |
+| `vec_length(vector)` | Returns the number of dimensions |
+
 ### SQLCipherStore - State Container with Undo/Redo
 
 `SQLCipherStore` provides a Redux-style state container with automatic persistence, undo/redo support, and command-style actions.
@@ -626,6 +737,47 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 ## Acknowledgments
 
 This package builds upon the excellent work of the SQLCipher team at ZETETIC LLC, who created and maintain the underlying encrypted SQLite implementation. Their commitment to open-source software has made secure local data storage accessible to developers across all platforms.
+
+## Updating C Sources
+
+This package includes C source files that may occasionally need updating to incorporate bug fixes, security patches, or new features from upstream projects.
+
+### SQLCipher Sources (sqlite3.c, sqlite3.h)
+
+The SQLCipher sources are downloaded from the official SQLCipher release. To update:
+
+1. Download the latest SQLCipher release from [ZETETIC](https://www.zetetic.net/sqlcipher/)
+
+2. Extract the archive and locate `sqlite3.c` and `sqlite3.h`
+
+3. Copy them to `Sources/CSQLCipher/`:
+   ```bash
+   cp /path/to/sqlcipher/sqlite3.c Sources/CSQLCipher/
+   cp /path/to/sqlcipher/sqlite3.h Sources/CSQLCipher/include/
+   ```
+
+4. Ensure the following compile flags remain defined in `Package.swift`:
+   - `SQLITE_HAS_CODEC` - Enables encryption support
+   - `SQLITE_TEMP_STORE=3` - Store temp tables in memory
+   - `SQLITE_ENABLE_FTS5` - Full-text search support
+
+### sqlite-vec Extension (sqlite-vec.c, sqlite-vec.h)
+
+The vector search extension is maintained separately in the [asg017/sqlite-vec](https://github.com/asg017/sqlite-vec) repository. To update:
+
+1. Visit the [sqlite-vec releases page](https://github.com/asg017/sqlite-vec/releases) to find the version you want
+
+2. Download the `sqlite-vec.c` and `sqlite-vec.h.tmpl` (rename to `.h`) files
+
+3. Copy them to the appropriate locations:
+   ```bash
+   cp /path/to/sqlite-vec.c Sources/CSQLCipher/
+   cp /path/to/sqlite-vec.h.tmpl Sources/CSQLCipher/include/sqlite-vec.h
+   ```
+
+4. The `vec_init.c` file in `Sources/CSQLCipher/` registers the extension automatically via `sqlite3_auto_extension()`. If the initialization API changes, you may need to update this file.
+
+5. Verify `SQLITE_VEC_STATIC` is defined in `Package.swift` to enable static linking.
 
 ## Support
 

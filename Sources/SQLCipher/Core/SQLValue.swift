@@ -13,19 +13,19 @@ import Foundation
 public enum SQLValue: Hashable {
     /// Integer value stored as `Int64`.
     case integer(Int64)
-    
+
     /// Floating-point value stored as `Double`.
     case real(Double)
-    
+
     /// Text value stored as `String`.
     case text(String)
-    
+
     /// Binary data stored as `Data`.
     case blob(Data)
-    
+
     /// Null value representing an absence of data.
     case null
-    
+
     /// Array of `SQLValue` elements.
     ///
     /// This case is primarily used to represent a collection of values that can be
@@ -39,6 +39,12 @@ public enum SQLValue: Hashable {
     /// db.execute("SELECT * FROM users WHERE id IN (:values)", parameters: ["values": values])
     /// ```
     indirect case array([SQLValue])
+
+    /// Vector of floating-point values for use with sqlite-vec.
+    ///
+    /// Vectors are stored as JSON strings for use with the sqlite-vec extension.
+    /// Use `[Float]` directly with `SQLValueRepresentable` for seamless conversion.
+    case vector([Float])
 }
 
 extension SQLValue: CustomStringConvertible {
@@ -54,8 +60,9 @@ extension SQLValue: CustomStringConvertible {
             return value.description
         case .null:
             return "NULL"
-            
         case .array(let values):
+            return values.description
+        case .vector(let values):
             return values.description
         }
     }
@@ -65,7 +72,7 @@ extension SQLValue: Encodable {
         if case .array(let values) = self {
             var container = encoder.unkeyedContainer()
             try container.encode(contentsOf: values)
-            
+
         } else {
             var container = encoder.singleValueContainer()
             switch self {
@@ -79,6 +86,8 @@ extension SQLValue: Encodable {
                 try container.encode(value)
             case .null:
                 try container.encodeNil()
+            case .vector(let values):
+                try container.encode(values)
             default:
                 break
             }
@@ -151,11 +160,19 @@ extension SQLValue {
         case .array(let values):
             let encoder = JSONEncoder()
             let jsonData = try encoder.encode(values)
-            
+
             guard let jsonString = String(data: jsonData, encoding: .utf8) else {
                 throw SQLiteError.general(code: SQLITE_ERROR, message: "\(#function) unable to convert array to JSON string")
             }
-            
+
+            result = sqlite3_bind_text(statement, index, jsonString, -1, SQLITE_TRANSIENT)
+        case .vector(let values):
+            // Vectors are stored as JSON arrays for sqlite-vec compatibility
+            let doubles = values.map { Double($0) }
+            guard let jsonData = try? JSONSerialization.data(withJSONObject: doubles),
+                  let jsonString = String(data: jsonData, encoding: .utf8) else {
+                throw SQLiteError.general(code: SQLITE_ERROR, message: "\(#function) unable to convert vector to JSON string")
+            }
             result = sqlite3_bind_text(statement, index, jsonString, -1, SQLITE_TRANSIENT)
         }
         
@@ -340,10 +357,43 @@ extension Array: SQLValueRepresentable where Element: SQLValueRepresentable {
     public var sqliteValue: SQLValue {
         .array(map(\.sqliteValue))
     }
-    
+
     public init?(sqliteValue: SQLValue) {
         guard case let .array(values) = sqliteValue else { return nil }
         self = values.compactMap(Element.init(sqliteValue:))
+    }
+}
+
+// MARK: - Vector Support
+
+/// A wrapper type for vector embeddings that provides SQLValueRepresentable conformance.
+public struct Vector: SQLValueRepresentable, Hashable {
+    public let elements: [Float]
+
+    public init(_ elements: [Float]) {
+        self.elements = elements
+    }
+
+    public init?(sqliteValue: SQLValue) {
+        guard case let .vector(values) = sqliteValue else { return nil }
+        self.elements = values
+    }
+
+    public var sqliteValue: SQLValue {
+        .vector(elements)
+    }
+
+    public var count: Int { elements.count }
+    public var isEmpty: Bool { elements.isEmpty }
+
+    public subscript(index: Int) -> Float {
+        elements[index]
+    }
+}
+
+extension Vector: ExpressibleByArrayLiteral {
+    public init(arrayLiteral elements: Float...) {
+        self.init(elements)
     }
 }
 

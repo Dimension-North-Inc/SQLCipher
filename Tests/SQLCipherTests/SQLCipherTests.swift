@@ -269,4 +269,129 @@ extension SQLCipherTests {
         #expect(store.state.address.state == "NY") // still NY from before critical
     }
 
+    // MARK: - FTS5 Support
+
+    @Test
+    func testFTS5Available() throws {
+        let path = tempDBPath()
+        let db = try SQLCipher(path: path)
+
+        // Create an FTS5 virtual table
+        try db.writer.exec("""
+            CREATE VIRTUAL TABLE articles USING fts5(title, content);
+            INSERT INTO articles (title, content) VALUES
+                ('Apple Silicon', 'M-series chips provide industry-leading performance per watt'),
+                ('Machine Learning', 'Apple Neural Engine accelerates ML workloads'),
+                ('Swift Language', 'Swift is a powerful and intuitive programming language');
+            """
+        )
+
+        // Verify FTS5 table exists
+        let tableInfo = try db.reader.execute("""
+            SELECT name FROM sqlite_master WHERE type='table' AND name='articles'
+            """
+        )
+        #expect(tableInfo.count == 1)
+
+        // Test full-text search
+        let results = try db.reader.execute("""
+            SELECT title FROM articles WHERE articles MATCH 'Apple'
+            """)
+
+        // Should find both "Apple Silicon" and "Machine Learning" (contains "Apple")
+        #expect(results.count == 2)
+    }
+
+    @Test
+    func testFTS5SearchRanking() throws {
+        let path = tempDBPath()
+        let db = try SQLCipher(path: path)
+
+        try db.writer.exec("""
+            CREATE VIRTUAL TABLE docs USING fts5(title, tokenize='porter');
+            INSERT INTO docs (title) VALUES
+                ('Swift programming guide'),
+                ('SwiftUI tutorial'),
+                ('Programming in Objective-C'),
+                ('Advanced Swift techniques');
+            """
+        )
+
+        // Search for "Swift programming" - should rank results with both terms higher
+        let results = try db.reader.execute("""
+            SELECT title, rank FROM docs WHERE docs MATCH 'programming' ORDER BY rank
+            """)
+
+        #expect(results.count == 2)
+        // "Swift programming guide" should rank higher than "Programming in Objective-C"
+        #expect(results[0].title == "Swift programming guide")
+    }
+
+    // MARK: - sqlite-vec Support
+
+    @Test
+    func testVecExtensionLoaded() throws {
+        let path = tempDBPath()
+        let db = try SQLCipher(path: path)
+
+        // Verify vec0 virtual table can be created (extension auto-registers via constructor)
+        // vec0 syntax: column_name type[dimensions], e.g., "v float[3]"
+        try db.writer.exec("""
+            CREATE VIRTUAL TABLE vectors USING vec0(v float[3]);
+            """
+        )
+
+        // Verify the table exists
+        let tableInfo = try db.reader.execute("""
+            SELECT name FROM sqlite_master WHERE type='table' AND name='vectors'
+            """
+        )
+        #expect(tableInfo.count == 1)
+    }
+
+    @Test
+    func testVecInsertAndSearch() throws {
+        let path = tempDBPath()
+        let db = try SQLCipher(path: path)
+
+        // Create vec table with a 3-dimensional vector column
+        try db.writer.exec("""
+            CREATE VIRTUAL TABLE embeddings USING vec0(v float[3]);
+            """
+        )
+
+        // Insert vectors using our Vector type and parameterized queries
+        struct EmbeddingParams {
+            var id: Int
+            var vector: Vector
+        }
+
+        let insertQuery: SQLQuery<EmbeddingParams> = "INSERT INTO embeddings (rowid, v) VALUES (\(\.id), \(\.vector))"
+
+        try db.writer.execute(insertQuery, EmbeddingParams(id: 1, vector: Vector([1.0, 0.0, 0.0])))
+        try db.writer.execute(insertQuery, EmbeddingParams(id: 2, vector: Vector([0.0, 1.0, 0.0])))
+        try db.writer.execute(insertQuery, EmbeddingParams(id: 3, vector: Vector([0.0, 0.0, 1.0])))
+        try db.writer.execute(insertQuery, EmbeddingParams(id: 4, vector: Vector([0.5, 0.5, 0.0])))
+
+        // Verify data was inserted
+        let count = try db.reader.execute("SELECT COUNT(*) as cnt FROM embeddings")
+        #expect(count[0].cnt == 4)
+
+        // Search for 4 nearest neighbors to [1.0, 0.0, 0.0] using our Vector type
+        struct SearchParams {
+            var query: Vector
+        }
+        let searchQuery: SQLQuery<SearchParams> = """
+            SELECT rowid, distance FROM embeddings
+            WHERE v MATCH \(\.query) AND k = 4
+            ORDER BY distance
+            """
+
+        let results = try db.reader.execute(searchQuery, SearchParams(query: Vector([1.0, 0.0, 0.0])))
+
+        #expect(results.count == 4)
+        #expect(results[0].rowid == 1) // Exact match should have distance 0
+        #expect(results[1].rowid == 4) // [0.5, 0.5, 0.0] is closer than [0,1,0] or [0,0,1]
+    }
+
 }

@@ -15,7 +15,7 @@ let package = Package(
         .target(
             name: "CSQLCipher",
             dependencies: [],
-            sources: ["sqlite3.c"],
+            sources: ["sqlite3.c", "sqlite-vec.c", "vec_init.c"],
             publicHeadersPath: "include",
             cSettings: [
                 .define("SQLITE_HAS_CODEC"),
@@ -24,6 +24,10 @@ let package = Package(
                 .define("SQLCIPHER_CRYPTO_CC"),
 
                 .define("SQLITE_ENABLE_FTS5"),
+
+                .define("SQLITE_CORE"),
+
+                .define("SQLITE_VEC_STATIC"),
 
                 .define("NDEBUG"),
 
