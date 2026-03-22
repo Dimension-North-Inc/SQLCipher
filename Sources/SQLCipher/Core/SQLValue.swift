@@ -42,9 +42,8 @@ public enum SQLValue: Hashable {
 
     /// Vector of floating-point values for use with sqlite-vec.
     ///
-    /// Vectors are stored as JSON strings for use with the sqlite-vec extension.
-    /// Use `[Float]` directly with `SQLValueRepresentable` for seamless conversion.
-    case vector([Float])
+    /// Vectors are stored as a tuple of element type and packed blob data.
+    case vector(VectorElementType, Data)
 }
 
 /// Element types supported by sqlite-vec for vector storage.
@@ -60,7 +59,7 @@ public enum VectorElementType: Int, Sendable {
 /// A type that can be used as the element type for a vector.
 /// Conforming types provide packing and unpacking logic for storing
 /// vector data as blobs in SQLite.
-public protocol SQLVectorType {
+public protocol SQLVectorType: Hashable {
     /// The sqlite-vec element type for this vector type.
     static var elementType: VectorElementType { get }
 
@@ -86,8 +85,8 @@ extension SQLValue: CustomStringConvertible {
             return "NULL"
         case .array(let values):
             return values.description
-        case .vector(let values):
-            return values.description
+        case .vector(let elementType, let data):
+            return "vector(\(elementType), \(data.count) bytes)"
         }
     }
 }
@@ -110,8 +109,9 @@ extension SQLValue: Encodable {
                 try container.encode(value)
             case .null:
                 try container.encodeNil()
-            case .vector(let values):
-                try container.encode(values)
+            case .vector(_, let data):
+                // Vectors are stored as opaque blob data, not directly encodable as JSON
+                try container.encode(data)
             default:
                 break
             }
@@ -190,14 +190,9 @@ extension SQLValue {
             }
 
             result = sqlite3_bind_text(statement, index, jsonString, -1, SQLITE_TRANSIENT)
-        case .vector(let values):
-            // Vectors are stored as JSON arrays for sqlite-vec compatibility
-            let doubles = values.map { Double($0) }
-            guard let jsonData = try? JSONSerialization.data(withJSONObject: doubles),
-                  let jsonString = String(data: jsonData, encoding: .utf8) else {
-                throw SQLiteError.general(code: SQLITE_ERROR, message: "\(#function) unable to convert vector to JSON string")
-            }
-            result = sqlite3_bind_text(statement, index, jsonString, -1, SQLITE_TRANSIENT)
+        case .vector(_, let data):
+            // Vectors are stored as blob data for sqlite-vec compatibility
+            result = sqlite3_bind_blob(statement, index, (data as NSData).bytes, Int32(data.count), SQLITE_TRANSIENT)
         }
         
         try checked(result, on: db)
@@ -463,32 +458,36 @@ extension Array: SQLValueRepresentable where Element: SQLValueRepresentable {
 // MARK: - Vector Support
 
 /// A wrapper type for vector embeddings that provides SQLValueRepresentable conformance.
-public struct Vector: SQLValueRepresentable, Hashable {
-    public let elements: [Float]
+/// The element type `Value` determines the storage format (float32, int8, or bit).
+public struct Vector<Value: SQLVectorType>: SQLValueRepresentable, Hashable {
+    public let elements: [Value]
 
-    public init(_ elements: [Float]) {
+    public init(_ elements: [Value]) {
         self.elements = elements
     }
 
     public init?(sqliteValue: SQLValue) {
-        guard case let .vector(values) = sqliteValue else { return nil }
-        self.elements = values
+        guard case let .vector(elementType, data) = sqliteValue,
+              elementType == Value.elementType else {
+            return nil
+        }
+        self.elements = Value.unpack(data)
     }
 
     public var sqliteValue: SQLValue {
-        .vector(elements)
+        .vector(Value.elementType, Value.pack(elements))
     }
 
     public var count: Int { elements.count }
     public var isEmpty: Bool { elements.isEmpty }
 
-    public subscript(index: Int) -> Float {
+    public subscript(index: Int) -> Value {
         elements[index]
     }
 }
 
 extension Vector: ExpressibleByArrayLiteral {
-    public init(arrayLiteral elements: Float...) {
+    public init(arrayLiteral elements: Value...) {
         self.init(elements)
     }
 }
