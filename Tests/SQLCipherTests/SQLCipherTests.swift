@@ -330,6 +330,13 @@ extension SQLCipherTests {
     // MARK: - sqlite-vec Support
 
     @Test
+    func testVectorElementType() {
+        // Verify VectorElementType enum cases exist with correct SQLite subtype values
+        #expect(VectorElementType.float32.rawValue == 223)
+        #expect(VectorElementType.float32.sqliteSubtype == 223)
+    }
+
+    @Test
     func testVecExtensionLoaded() throws {
         let path = tempDBPath()
         let db = try SQLCipher(path: path)

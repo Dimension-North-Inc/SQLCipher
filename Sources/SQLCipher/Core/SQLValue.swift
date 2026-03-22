@@ -47,6 +47,16 @@ public enum SQLValue: Hashable {
     case vector([Float])
 }
 
+/// Element types supported by sqlite-vec for vector storage.
+public enum VectorElementType: Int {
+    case float32 = 223  // SQLITE_VEC_ELEMENT_TYPE_FLOAT32
+    case bit = 224     // SQLITE_VEC_ELEMENT_TYPE_BIT
+    case int8 = 225    // SQLITE_VEC_ELEMENT_TYPE_INT8
+
+    /// Returns the SQLite subtype value for this element type.
+    public var sqliteSubtype: Int32 { Int32(rawValue) }
+}
+
 extension SQLValue: CustomStringConvertible {
     public var description: String {
         switch self {
