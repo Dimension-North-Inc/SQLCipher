@@ -712,4 +712,52 @@ extension SQLCipherTests {
         #expect(vectors[3].rowid == 4)
     }
 
+    @Test
+    func testVecInt8InsertAndQuery() throws {
+        let db = try SQLCipher(path: tempDBPath())
+
+        // First verify vec0 extension is working with int8 type
+        try db.writer.exec("CREATE VIRTUAL TABLE vectors_int8 USING vec0(v int8[4]);")
+
+        // Verify table was created
+        let tables = try db.reader.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='vectors_int8'")
+        #expect(tables.count == 1)
+
+        // Use vec_int8() function to properly set the subtype for int8 vectors
+        struct Params {
+            var id: Int
+            var v: Vector<Int8>
+        }
+        let insert: SQLQuery<Params> = "INSERT INTO vectors_int8 (rowid, v) VALUES (\(\.id), vec_int8(\(\.v)))"
+        try db.writer.execute(insert, Params(id: 1, v: Vector<Int8>([1, 2, 3, 4])))
+
+        // Verify data was inserted
+        let count = try db.reader.execute("SELECT COUNT(*) as cnt FROM vectors_int8")
+        #expect(count[0].cnt == 1)
+    }
+
+    @Test
+    func testVecBitInsertAndQuery() throws {
+        let db = try SQLCipher(path: tempDBPath())
+
+        // First verify vec0 extension is working with bit type
+        try db.writer.exec("CREATE VIRTUAL TABLE vectors_bit USING vec0(v bit[8]);")
+
+        // Verify table was created
+        let tables = try db.reader.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='vectors_bit'")
+        #expect(tables.count == 1)
+
+        // Use vec_bit() function to properly set the subtype for bit vectors
+        struct Params {
+            var id: Int
+            var v: Vector<Bool>
+        }
+        let insert: SQLQuery<Params> = "INSERT INTO vectors_bit (rowid, v) VALUES (\(\.id), vec_bit(\(\.v)))"
+        try db.writer.execute(insert, Params(id: 1, v: Vector<Bool>([true, true, false, false, false, false, false, false])))
+
+        // Verify data was inserted
+        let count = try db.reader.execute("SELECT COUNT(*) as cnt FROM vectors_bit")
+        #expect(count[0].cnt == 1)
+    }
+
 }
