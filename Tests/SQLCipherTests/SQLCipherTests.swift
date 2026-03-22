@@ -760,4 +760,30 @@ extension SQLCipherTests {
         #expect(count[0].cnt == 1)
     }
 
+    @Test
+    func testVecDistanceCosine() throws {
+        let db = try SQLCipher(path: tempDBPath())
+        try db.writer.exec("CREATE VIRTUAL TABLE vectors USING vec0(v float[3]);")
+
+        struct Params {
+            var v: Vector<Float>
+        }
+        let insert: SQLQuery<Params> = "INSERT INTO vectors (v) VALUES (\(\.v))"
+        try db.writer.execute(insert, Params(v: Vector<Float>([1.0, 0.0, 0.0])))
+        try db.writer.execute(insert, Params(v: Vector<Float>([0.0, 1.0, 0.0])))
+        try db.writer.execute(insert, Params(v: Vector<Float>([1.0, 0.0, 0.0]))) // duplicate of first
+
+        // Cosine distance between identical vectors should be 0
+        let result = try db.reader.execute("""
+            SELECT vec_distance_cosine(
+                (SELECT v FROM vectors WHERE rowid = 1),
+                (SELECT v FROM vectors WHERE rowid = 3)
+            ) as dist
+        """)
+
+        if let dist: Double = result.first?["dist"] {
+            #expect(dist == 0.0, "Identical vectors should have cosine distance of 0")
+        }
+    }
+
 }
