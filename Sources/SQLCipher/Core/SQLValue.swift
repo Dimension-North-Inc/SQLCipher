@@ -48,7 +48,7 @@ public enum SQLValue: Hashable {
 }
 
 /// Element types supported by sqlite-vec for vector storage.
-public enum VectorElementType: Int {
+public enum VectorElementType: Int, Sendable {
     case float32 = 223  // SQLITE_VEC_ELEMENT_TYPE_FLOAT32
     case bit = 224     // SQLITE_VEC_ELEMENT_TYPE_BIT
     case int8 = 225    // SQLITE_VEC_ELEMENT_TYPE_INT8
@@ -61,17 +61,14 @@ public enum VectorElementType: Int {
 /// Conforming types provide packing and unpacking logic for storing
 /// vector data as blobs in SQLite.
 public protocol SQLVectorType {
-    /// The underlying collection type for vector elements.
-    associatedtype ElementCollection: Sequence where ElementCollection.Element: SQLValueRepresentable
-
     /// The sqlite-vec element type for this vector type.
     static var elementType: VectorElementType { get }
 
     /// Packs an array of elements into Data for blob storage.
-    static func pack(_ elements: [ElementCollection.Element]) -> Data
+    static func pack(_ elements: [Self]) -> Data
 
     /// Unpacks Data back into an array of elements.
-    static func unpack(_ data: Data) -> [ElementCollection.Element]
+    static func unpack(_ data: Data) -> [Self]
 }
 
 extension SQLValue: CustomStringConvertible {
@@ -245,7 +242,7 @@ extension Int64: SQLValueRepresentable {
 
 extension Float: SQLValueRepresentable {
     public var sqliteValue: SQLValue { .real(Double(self)) }
-    
+
     public init?(sqliteValue: SQLValue) {
         switch sqliteValue {
         case .real(let value):
@@ -255,6 +252,32 @@ extension Float: SQLValueRepresentable {
         default:
             return nil
         }
+    }
+}
+
+/// Float (Float32) extension for sqlite-vec float32 vector storage.
+/// Stores elements as 4-byte big-endian floats.
+extension Float: SQLVectorType {
+    public static let elementType = VectorElementType.float32
+
+    public static func pack(_ elements: [Float]) -> Data {
+        var result = Data(capacity: elements.count * 4)
+        for value in elements {
+            let bigEndian = value.bitPattern.bigEndian
+            withUnsafeBytes(of: bigEndian) { result.append(contentsOf: $0) }
+        }
+        return result
+    }
+
+    public static func unpack(_ data: Data) -> [Float] {
+        var elements: [Float] = []
+        let count = data.count / 4
+        for i in 0..<count {
+            let offset = i * 4
+            let bits = data.withUnsafeBytes { $0.load(fromByteOffset: offset, as: UInt32.self).bigEndian }
+            elements.append(Float(bitPattern: bits))
+        }
+        return elements
     }
 }
 

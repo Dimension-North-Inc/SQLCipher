@@ -356,6 +356,83 @@ extension SQLCipherTests {
         #expect(tableInfo.count == 1)
     }
 
+    // MARK: - SQLVectorType Protocol
+
+    @Test
+    func testFloatPackProducesBigEndianBytes() {
+        // Float32 should be packed as 4-byte big-endian floats
+        let elements: [Float] = [1.0, 2.0, 3.0]
+        let packed = Float.pack(elements)
+
+        #expect(packed.count == 12) // 3 floats * 4 bytes each
+
+        // Verify big-endian representation
+        // 1.0 in big-endian IEEE 754 representation
+        let expected1: [UInt8] = [0x3F, 0x80, 0x00, 0x00]
+        // 2.0 in big-endian IEEE 754 representation
+        let expected2: [UInt8] = [0x40, 0x00, 0x00, 0x00]
+        // 3.0 in big-endian IEEE 754 representation
+        let expected3: [UInt8] = [0x40, 0x40, 0x00, 0x00]
+
+        #expect(packed[0...3].elementsEqual(expected1))
+        #expect(packed[4...7].elementsEqual(expected2))
+        #expect(packed[8...11].elementsEqual(expected3))
+    }
+
+    @Test
+    func testFloatUnpackReversesPacking() {
+        // Create big-endian float bytes manually
+        // 1.0 = 0x3F800000 in big-endian: [0x3F, 0x80, 0x00, 0x00]
+        // 2.0 = 0x40000000 in big-endian: [0x40, 0x00, 0x00, 0x00]
+        // 3.0 = 0x40400000 in big-endian: [0x40, 0x40, 0x00, 0x00]
+        var data = Data()
+        data.append(contentsOf: [0x3F, 0x80, 0x00, 0x00]) // 1.0
+        data.append(contentsOf: [0x40, 0x00, 0x00, 0x00]) // 2.0
+        data.append(contentsOf: [0x40, 0x40, 0x00, 0x00]) // 3.0
+
+        let unpacked = Float.unpack(data)
+
+        #expect(unpacked.count == 3)
+        #expect(unpacked[0] == 1.0)
+        #expect(unpacked[1] == 2.0)
+        #expect(unpacked[2] == 3.0)
+    }
+
+    @Test
+    func testFloatPackUnpackRoundTrip() {
+        // Test that packing and unpacking preserves values exactly
+        let original: [Float] = [0.0, -1.0, 1.0, 3.14159, -273.15, Float.leastNormalMagnitude, Float.greatestFiniteMagnitude]
+        let packed = Float.pack(original)
+        let unpacked = Float.unpack(packed)
+
+        #expect(unpacked.count == original.count)
+        for (original, recovered) in zip(original, unpacked) {
+            #expect(original == recovered)
+        }
+    }
+
+    @Test
+    func testFloatPackEmptyArray() {
+        let empty: [Float] = []
+        let packed = Float.pack(empty)
+        #expect(packed.isEmpty)
+        #expect(packed.count == 0)
+    }
+
+    @Test
+    func testFloatUnpackEmptyData() {
+        let emptyData = Data()
+        let unpacked = Float.unpack(emptyData)
+        #expect(unpacked.isEmpty)
+    }
+
+    @Test
+    func testSQLVectorTypeProtocolExists() {
+        // Verify SQLVectorType protocol exists and Float conforms to it
+        // The protocol is verified by the successful compilation and Float.pack/unpack calls below
+        #expect(Float.elementType == .float32)
+    }
+
     @Test
     func testVecInsertAndSearch() throws {
         let path = tempDBPath()
