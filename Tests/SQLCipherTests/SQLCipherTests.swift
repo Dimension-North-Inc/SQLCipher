@@ -499,6 +499,71 @@ extension SQLCipherTests {
         #expect(Int8.elementType == .int8)
     }
 
+    // MARK: - Bool SQLVectorType Tests
+
+    @Test
+    func testBoolPackProducesPackedBits() {
+        // Bool should be packed as bits (8 bools per byte, MSB first)
+        let elements: [Bool] = [true, true, false, false, false, false, false, false]
+        let packed = Bool.pack(elements)
+
+        #expect(packed.count == 1) // 8 bools = 1 byte
+        #expect(packed[0] == 0xC0) // MSB first: true=0x80, true=0x40, sum=0xC0
+    }
+
+    @Test
+    func testBoolUnpackReversesPacking() {
+        // Create packed bit data manually: 0xC0 = [true, true, false, false, false, false, false, false]
+        let data = Data([0xC0])
+
+        let unpacked = Bool.unpack(data)
+
+        #expect(unpacked.count == 8)
+        #expect(unpacked[0] == true)
+        #expect(unpacked[1] == true)
+        #expect(unpacked[2] == false)
+        #expect(unpacked[3] == false)
+        #expect(unpacked[4] == false)
+        #expect(unpacked[5] == false)
+        #expect(unpacked[6] == false)
+        #expect(unpacked[7] == false)
+    }
+
+    @Test
+    func testBoolPackUnpackRoundTrip() {
+        // Test that packing and unpacking preserves values exactly
+        // Note: element count must be multiple of 8 for exact round-trip
+        let original: [Bool] = [true, false, true, false, true, false, true, false, false, false, true, true, false, true, false, true]
+        let packed = Bool.pack(original)
+        let unpacked = Bool.unpack(packed)
+
+        #expect(unpacked.count == original.count)
+        for (original, recovered) in zip(original, unpacked) {
+            #expect(original == recovered)
+        }
+    }
+
+    @Test
+    func testBoolPackEmptyArray() {
+        let empty: [Bool] = []
+        let packed = Bool.pack(empty)
+        #expect(packed.isEmpty)
+        #expect(packed.count == 0)
+    }
+
+    @Test
+    func testBoolUnpackEmptyData() {
+        let emptyData = Data()
+        let unpacked = Bool.unpack(emptyData)
+        #expect(unpacked.isEmpty)
+    }
+
+    @Test
+    func testBoolElementType() {
+        // Verify Bool conforms to SQLVectorType with correct element type
+        #expect(Bool.elementType == .bit)
+    }
+
     @Test
     func testVecInsertAndSearch() throws {
         let path = tempDBPath()

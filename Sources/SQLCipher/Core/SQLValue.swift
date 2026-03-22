@@ -295,6 +295,38 @@ extension Int8: SQLVectorType {
     }
 }
 
+/// Bool extension for sqlite-vec bit vector storage.
+/// Stores elements as packed bits (8 bools per byte, MSB first).
+extension Bool: SQLVectorType {
+    public static let elementType = VectorElementType.bit
+
+    public static func pack(_ elements: [Bool]) -> Data {
+        var result = Data()
+        var index = 0
+        while index < elements.count {
+            var byte: UInt8 = 0
+            for bitIndex in 0..<8 {
+                if index + bitIndex < elements.count && elements[index + bitIndex] {
+                    byte |= (1 << (7 - bitIndex))
+                }
+            }
+            result.append(byte)
+            index += 8
+        }
+        return result
+    }
+
+    public static func unpack(_ data: Data) -> [Bool] {
+        var elements: [Bool] = []
+        for byte in data {
+            for index in 0..<8 {
+                elements.append((byte & (1 << (7 - index))) != 0)
+            }
+        }
+        return elements
+    }
+}
+
 extension Double: SQLValueRepresentable {
     public var sqliteValue: SQLValue { .real(self) }
     
