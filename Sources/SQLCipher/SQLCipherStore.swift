@@ -68,31 +68,28 @@ open class SQLCipherStore<State: Sendable>: @unchecked Sendable {
     ///
     /// - Parameters:
     ///   - db: The SQLCipher database to use for persistence.
+    ///   - key: Optional root identification key for namespacing all substates.
     ///   - state: The initial state value.
-    ///   - substates: An array of substates to persist independently.
-    public init(db: SQLCipher, state: State, substates: [Substate<State>]) {
+    ///   - substates: Optional array of substates to persist. Defaults to `[Substate(\.self)]` (entire state).
+    public init(db: SQLCipher, key: String? = nil, state: State, substates: [Substate<State>]? = nil) where State: Stored {
         Self.initializeStateStorage(db: db)
-        
+
         self.db         = db
-        
-        let restored    = Self.restoreSubstates(substates, state: state, db: db)
-        
+
+        let resolved    = substates ?? [Substate(\.self)]
+
+        // Assign key to each substate for namespacing
+        var keyedSubstates = resolved
+        for i in keyedSubstates.indices {
+            keyedSubstates[i].setKey(key)
+        }
+
+        let restored    = Self.restoreSubstates(keyedSubstates, state: state, db: db)
+
         self.updates    = [.undoable(restored)]
         self.current    = 0
-        
-        self.substates  = substates
-    }
 
-    /// Initializes a new store with a single persistent state.
-    ///
-    /// - Parameters:
-    ///   - db: The SQLCipher database to use for persistence.
-    ///   - state: The initial state value, which must conform to `Stored`.
-    ///   - rootKey: The key used to store this state's data in the database. Defaults to the
-    ///              type's `storageKey`. Override to support multiple peer stores with custom keys.
-    public convenience init(db: SQLCipher, state: State, rootKey: String? = nil) where State: Stored {
-        let key = rootKey ?? State.storageKey
-        self.init(db: db, state: state, substates: [Substate(key: key, \.self)])
+        self.substates  = keyedSubstates
     }
 
     /// Provides dynamic member lookup for the current state.
@@ -369,9 +366,6 @@ extension SQLCipherStore {
             for substate in substates {
                 try setStateData(substate.encode(from: states.new), forKey: substate.key, db: db)
             }
-            
-        case .partial:
-            break
         }
     }
 

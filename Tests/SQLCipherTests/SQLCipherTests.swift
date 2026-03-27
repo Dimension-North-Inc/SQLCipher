@@ -169,6 +169,47 @@ extension SQLCipherTests {
     }
 
     @Test
+    func testCipherStoreEntireStatePersistence() async throws {
+        // Test that entire state (Substate(\.self)) is persisted and restored correctly
+        let initial = Customer(
+            name: "Johnny Appleseed",
+            address: Address(
+                street: "1 Infinite Loop",
+                city: "Cupertino",
+                state: "CA",
+                zip: "90210"
+            ),
+            contacts: Contacts(
+                emails: ["johnny_appleseed@apple.com"],
+                phoneNumbers: []
+            )
+        )
+
+        let path = tempDBPath()
+
+        // Store 1: write to DB
+        let db = try SQLCipher(path: path)
+        let store1 = SQLCipherStore(db: db, state: initial, substates: [Substate(\.self)])
+        #expect(store1.state.name == "Johnny Appleseed")
+
+        // Modify state
+        await store1.update(.undoable) { customer, _ in
+            customer.address.zip = "99999"
+            customer.contacts.emails = ["modified@icloud.com"]
+        }
+        #expect(store1.state.address.zip == "99999")
+        #expect(store1.state.contacts.emails == ["modified@icloud.com"])
+
+        // Store 2: read from same DB, verify data was persisted
+        let db2 = try SQLCipher(path: path)
+        let store2 = SQLCipherStore(db: db2, state: initial, substates: [Substate(\.self)])
+
+        #expect(store2.state.address.zip == "99999")
+        #expect(store2.state.contacts.emails == ["modified@icloud.com"])
+        #expect(store2.state.name == "Johnny Appleseed")
+    }
+
+    @Test
     func testCipherStoreCustomRootKey() async throws {
         let initial = Customer(
             name: "Johnny Appleseed",
@@ -188,8 +229,8 @@ extension SQLCipherTests {
         let db = try SQLCipher(path: path)
 
         // Create two peer stores with different root keys
-        let storeA = SQLCipherStore(db: db, state: initial, rootKey: "customer_a")
-        let storeB = SQLCipherStore(db: db, state: initial, rootKey: "customer_b")
+        let storeA = SQLCipherStore(db: db, key: "customer_a", state: initial, substates: [Substate(\.self)])
+        let storeB = SQLCipherStore(db: db, key: "customer_b", state: initial, substates: [Substate(\.self)])
 
         #expect(storeA.state.name == "Johnny Appleseed")
         #expect(storeB.state.name == "Johnny Appleseed")
@@ -211,15 +252,15 @@ extension SQLCipherTests {
 
         // Verify they're stored independently by creating new stores
         let db2 = try SQLCipher(path: path)
-        let storeA2 = SQLCipherStore(db: db2, state: initial, rootKey: "customer_a")
-        let storeB2 = SQLCipherStore(db: db2, state: initial, rootKey: "customer_b")
+        let storeA2 = SQLCipherStore(db: db2, key: "customer_a", state: initial, substates: [Substate(\.self)])
+        let storeB2 = SQLCipherStore(db: db2, key: "customer_b", state: initial, substates: [Substate(\.self)])
 
         #expect(storeA2.state.address.zip == "11111")
         #expect(storeB2.state.address.zip == "99999")
         #expect(storeB2.state.contacts.emails == ["johnny@icloud.com"])
 
         // Verify default rootKey still works (uses type name)
-        let storeDefault = SQLCipherStore(db: db2, state: initial)
+        let storeDefault = SQLCipherStore(db: db2, state: initial, substates: [Substate(\.self)])
         #expect(storeDefault.state.address.zip == "90210") // unchanged, separate from custom keys
     }
 

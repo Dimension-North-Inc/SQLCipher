@@ -403,7 +403,7 @@ let initialState = AppState(
 )
 
 // Create store with automatic persistence of the entire state
-let store = SQLCipherStore(db: db, state: initialState)
+let store = SQLCipherStore(db: db, state: initialState, substates: [Substate(\.self)])
 
 // Access state directly or via dynamic member lookup
 print("Counter: \(store.state.counter)")
@@ -537,6 +537,44 @@ await store.update(.undoable) { state, db in
 }
 ```
 
+#### Custom Root Keys
+
+You can specify a custom `key` parameter to namespace multiple stores, allowing independent state persistence within the same database:
+
+```swift
+// Two stores with different keys, each persisting entire state independently
+let storeA = SQLCipherStore(
+    db: db,
+    key: "store_a",
+    state: initialState,
+    substates: [Substate(\.self)]
+)
+
+let storeB = SQLCipherStore(
+    db: db,
+    key: "store_b",
+    state: initialState,
+    substates: [Substate(\.self)]
+)
+
+// Each store maintains its own state under its respective key
+```
+
+You can also use custom keys with explicit substates:
+
+```swift
+let store = SQLCipherStore(
+    db: db,
+    key: "app1",
+    state: initialState,
+    substates: [
+        Substate(\.address),
+        Substate(\.contacts)
+    ]
+)
+// Data is stored under keys "app1.address" and "app1.contacts"
+```
+
 #### Database Operations in State Updates
 
 You can perform database operations within state update closures. All operations are part of the same transaction:
@@ -618,7 +656,7 @@ struct ChangeThemeAction: SQLAction {
 }
 
 // Dispatch actions
-let store = SQLCipherStore(db: db, state: initialState)
+let store = SQLCipherStore(db: db, state: initialState, substates: [Substate(\.self)])
 
 // Await completion
 await store.dispatch(IncrementCounterAction(amount: 5))
@@ -666,7 +704,7 @@ struct MyApp: App {
     init() {
         let db = try! SQLCipher(path: dbPath, key: encryptionKey)
         let initialState = AppState(counter: 0, userName: "Guest", preferences: UserPreferences(theme: "light", notifications: true))
-        self.store = SQLCipherStore(db: db, state: initialState)
+        self.store = SQLCipherStore(db: db, state: initialState, substates: [Substate(\.self)])
     }
     
     var body: some Scene {

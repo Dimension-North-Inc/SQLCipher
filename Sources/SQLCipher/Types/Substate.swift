@@ -10,7 +10,8 @@ import Foundation
 
 /// The persistent `Substate` of a larger `State`, stored in a SQLCipher database
 public struct Substate<State>: @unchecked Sendable {
-    let key: String
+    /// The storage key for this substate (either explicit or Value.storageKey)
+    var key: String
 
     private let read: (State) -> any Stored
     private let write: (inout State, any Stored) -> Void
@@ -20,33 +21,40 @@ public struct Substate<State>: @unchecked Sendable {
 
     /// Initializes a `Substate` with a key path to a persistent substate of a larger state.
     ///
-    /// - Parameter keyPath: The writable key path from the larger `State` to the specific substate.
+    /// - Parameters:
+    ///   - path: The writable key path from the larger `State` to the specific substate.
+    ///   - key: Optional explicit storage key. Defaults to nil (uses Value.storageKey).
     public init<Value: Stored>(
-        key: String? = nil,
-        _ keyPath: WritableKeyPath<State, Value>
+        _ path: WritableKeyPath<State, Value>,
+        key: String? = nil
     ) {
         self.key = key ?? Value.storageKey
 
         self.read = { state in
-            state[keyPath: keyPath]
+            state[keyPath: path]
         }
 
         self.write = { state, value in
             guard let value = value as? Value else {
                 fatalError(
-                    "Invalid substate type \(type(of: value)) for keyPath \(keyPath)."
+                    "Invalid substate type \(type(of: value)) for path \(path)."
                 )
             }
-            state[keyPath: keyPath] = value
+            state[keyPath: path] = value
         }
 
         self.encode = { state in
-            return try Value.encode(state[keyPath: keyPath])
+            return try Value.encode(state[keyPath: path])
         }
 
         self.decode = { data in
             return try Value.decode(data)
         }
+    }
+
+    /// Sets the storage key directly.
+    mutating func setKey(_ newKey: String?) {
+        self.key = newKey ?? self.key
     }
 
     /// Reads the substate from the provided state.
