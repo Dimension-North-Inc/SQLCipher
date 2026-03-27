@@ -403,7 +403,7 @@ let initialState = AppState(
 )
 
 // Create store with automatic persistence of the entire state
-let store = SQLCipherStore(db: db, state: initialState, substates: [Substate(\.self)])
+let store = SQLCipherStore(db: db, state: initialState)
 
 // Access state directly or via dynamic member lookup
 print("Counter: \(store.state.counter)")
@@ -543,19 +543,8 @@ You can specify a custom `key` parameter to namespace multiple stores, allowing 
 
 ```swift
 // Two stores with different keys, each persisting entire state independently
-let storeA = SQLCipherStore(
-    db: db,
-    key: "store_a",
-    state: initialState,
-    substates: [Substate(\.self)]
-)
-
-let storeB = SQLCipherStore(
-    db: db,
-    key: "store_b",
-    state: initialState,
-    substates: [Substate(\.self)]
-)
+let storeA = SQLCipherStore(db: db, key: "store_a", state: initialState)
+let storeB = SQLCipherStore(db: db, key: "store_b", state: initialState)
 
 // Each store maintains its own state under its respective key
 ```
@@ -656,7 +645,7 @@ struct ChangeThemeAction: SQLAction {
 }
 
 // Dispatch actions
-let store = SQLCipherStore(db: db, state: initialState, substates: [Substate(\.self)])
+let store = SQLCipherStore(db: db, state: initialState)
 
 // Await completion
 await store.dispatch(IncrementCounterAction(amount: 5))
@@ -704,7 +693,7 @@ struct MyApp: App {
     init() {
         let db = try! SQLCipher(path: dbPath, key: encryptionKey)
         let initialState = AppState(counter: 0, userName: "Guest", preferences: UserPreferences(theme: "light", notifications: true))
-        self.store = SQLCipherStore(db: db, state: initialState, substates: [Substate(\.self)])
+        self.store = SQLCipherStore(db: db, state: initialState)
     }
     
     var body: some Scene {
