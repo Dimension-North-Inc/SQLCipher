@@ -175,11 +175,18 @@ public final class SQLConnection: @unchecked Sendable {
         let keyToUse = key ?? ""
 
         if isEncrypted {
-            // rekey when we're resetting the key on an already encrypted database
+            // Rekey an already-encrypted database (change key or decrypt)
             try checked(sqlite3_rekey(self.db, keyToUse, Int32(keyToUse.utf8.count)), on: self.db)
         } else if !keyToUse.isEmpty {
-            // if our database is unkeyed, only set a key if it is non-empty
-            try checked(sqlite3_key(self.db, keyToUse, Int32(keyToUse.utf8.count)), on: self.db)
+            // Encrypting an existing plaintext database is not supported via
+            // sqlite3_rekey / PRAGMA rekey. SQLCipher requires sqlcipher_export()
+            // with an ATTACHed encrypted database for this conversion.
+            throw SQLiteError.general(
+                code: SQLITE_MISUSE,
+                message: "Cannot encrypt an existing plaintext database via resetKey. "
+                       + "Create a new encrypted database with init(path:key:) instead, "
+                       + "or use sqlcipher_export() to migrate data."
+            )
         }
 
         isEncrypted = !keyToUse.isEmpty

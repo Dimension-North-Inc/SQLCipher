@@ -120,6 +120,20 @@ import Foundation
         }
     }
 
+    @Test func testEncryptExistingDatabaseThrows() throws {
+        let path = tempDBPath()
+        // Create an initially unencrypted database with data
+        let db = try SQLConnection(path: path, role: .writer)
+        try db.exec("CREATE TABLE encrypt_test (id INTEGER PRIMARY KEY)")
+        try db.exec("INSERT INTO encrypt_test (id) VALUES (42)")
+        #expect(db.isEncrypted == false)
+
+        // resetKey on an unencrypted database should throw a clear error
+        #expect(throws: SQLiteError.self) {
+            try db.resetKey("new-secret")
+        }
+    }
+
     @Test func testConcurrentReaders() throws {
         let path = tempDBPath()
         let writer = try SQLConnection(path: path, role: .writer)
