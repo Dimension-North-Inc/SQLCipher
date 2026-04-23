@@ -805,7 +805,9 @@ db.configureSync(config)
 
 #### Handling Remote Notifications
 
-Register for push notifications and forward CloudKit notifications to the sync engine:
+Register for push notifications and forward CloudKit notifications to the sync engine.
+
+**iOS (`UIApplicationDelegate`):**
 
 ```swift
 func application(
@@ -817,6 +819,26 @@ func application(
         userInfo: userInfo as! [String: Any]
     )
     completionHandler(.newData)
+}
+```
+
+**macOS (`NSApplicationDelegate`):**
+
+```swift
+func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String : Any]) {
+    Task {
+        await SQLCipherCloudKitSyncEngine.shared.handleRemoteNotification(
+            userInfo: userInfo
+        )
+    }
+}
+```
+
+On macOS, also register for remote notifications during app launch:
+
+```swift
+func applicationDidFinishLaunching(_ notification: Notification) {
+    NSApplication.shared.registerForRemoteNotifications()
 }
 ```
 
