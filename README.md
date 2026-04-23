@@ -68,16 +68,25 @@ This package provides two primary usage patterns: direct database operations and
 ```swift
 import SQLCipher
 
-// Initialize an encrypted database
 let dbPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)[0] + "/app.db"
-let encryptionKey = "your-secure-encryption-key"
-let db = try SQLCipher(path: dbPath, key: encryptionKey)
 
-// Check if the database is encrypted
-print("Database is encrypted: \(db.isEncrypted)")
+// Initialize an encrypted database
+let encryptedDB = try SQLCipher(path: dbPath, key: "your-secure-encryption-key")
 
-// Change the encryption key (rekeying)
-try db.resetKey(to: "new-encryption-key")
+// Initialize a plaintext database
+let plaintextDB = try SQLCipher(path: dbPath)
+
+// Check encryption state
+print("Database is encrypted: \(encryptedDB.isEncrypted)")
+
+// Rekey an encrypted database (fast, in-place)
+try encryptedDB.resetKey(to: "new-encryption-key")
+
+// Encrypt an existing plaintext database (migration via sqlcipher_export)
+try plaintextDB.resetKey(to: "new-encryption-key")
+
+// Decrypt an existing encrypted database (migration via sqlcipher_export)
+try encryptedDB.resetKey(to: nil)
 
 // Use an in-memory database (useful for testing)
 let inMemoryDB = try SQLCipher(path: ":memory:")
