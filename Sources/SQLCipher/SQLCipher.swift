@@ -23,9 +23,12 @@ public final class SQLCipher: @unchecked Sendable {
     /// Separate connections for read and write operations.
     public let reader, writer: SQLConnection
     
-    /// A subject that publishes an event whenever the database is
-    /// updated, allowing observers to be notified of changes.
-    private let didUpdate = CurrentValueSubject<Void, Never>(())
+    /// A subject that publishes the set of changed table names whenever the
+    /// database is updated, allowing observers to be notified of changes.
+    package let didUpdate = CurrentValueSubject<Set<String>, Never>([])
+    
+    /// The current sync configuration, if any.
+    package var syncConfiguration: SyncConfiguration?
     
     /// Package-internal logger for SQLCipher operations.
     internal static let log = Logger(
@@ -54,9 +57,9 @@ public final class SQLCipher: @unchecked Sendable {
         self.writer = try SQLConnection(path: path, key: key, role: .writer)
         
         // Set the writer’s onUpdate closure to call the `onUpdate`
-        // method, publishing an update notification on changes.
-        writer.onUpdate = {
-            [unowned self] connection in self.onUpdate(connection)
+        // method, publishing an update notification with changed table names.
+        writer.onCommitted = {
+            [unowned self] tables in self.onUpdate(tables)
         }
     }
     
@@ -82,11 +85,11 @@ extension SQLCipher: Equatable {
 
 // MARK: - Observation
 extension SQLCipher {
-    /// Called when changes are commited to the `writer` database.
-    /// - Parameter connection: the `writer` connection
+    /// Called when changes are committed to the `writer` database.
+    /// - Parameter tables: the set of table names that changed in this transaction
     /// - Returns: `SQLITE_OK` to allow the commit to occur
-    private func onUpdate(_ connection: SQLConnection) -> SQLErrorCode {
-        didUpdate.send(())
+    private func onUpdate(_ tables: Set<String>) -> SQLErrorCode {
+        didUpdate.send(tables)
         return SQLITE_OK
     }
 }

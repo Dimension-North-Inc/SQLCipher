@@ -75,6 +75,13 @@ public final class SQLConnection: @unchecked Sendable {
     
     public  var onUpdate: (SQLConnection) -> SQLErrorCode
     
+    /// A tracker that accumulates table names modified by this connection.
+    package let changeTracker = ChangeTracker()
+    
+    /// A callback invoked on commit with the set of tables that changed during the transaction.
+    /// When set, this takes precedence over `onUpdate` for commit notifications.
+    package var onCommitted: ((Set<String>) -> SQLErrorCode)?
+    
     public private(set) var isEncrypted: Bool = false
     
     // Package-internal logger for SQLCipher operations
@@ -110,8 +117,9 @@ public final class SQLConnection: @unchecked Sendable {
             isEncrypted = true
         }
 
-        // Install commit, rollback hooks
+        // Install commit, rollback, and update hooks
         installCommitHooks()
+        installUpdateHook()
     }
     
     deinit {
@@ -192,6 +200,15 @@ extension SQLConnection {
         sqlite3_commit_hook(self.db, commitHookCallback, Unmanaged.passUnretained(self).toOpaque())
         sqlite3_rollback_hook(self.db, rollbackHookCallback, Unmanaged.passUnretained(self).toOpaque())
     }
+    
+    /// Installs the update hook on the SQLite database connection.
+    ///
+    /// The `sqlite3_update_hook` registers a callback that is invoked whenever
+    /// a row is inserted, updated, or deleted. The callback records the affected
+    /// table name in the connection's `changeTracker`.
+    private func installUpdateHook() {
+        sqlite3_update_hook(self.db, updateHookCallback, Unmanaged.passUnretained(self).toOpaque())
+    }
 
     /// Callback for commit events in the SQLite database connection.
     ///
@@ -200,6 +217,10 @@ extension SQLConnection {
     ///
     /// - Returns: the result of `onUpdate(self)`
     fileprivate func onCommit() -> SQLErrorCode {
+        let tables = changeTracker.flush()
+        if let onCommitted = onCommitted {
+            return onCommitted(tables)
+        }
         return onUpdate(self)
     }
     
@@ -209,7 +230,10 @@ extension SQLConnection {
     /// database, either due to an explicit rollback or because of an error
     /// during the transaction.
     fileprivate func onRollback() {
-        _ = onUpdate(self)
+        _ = changeTracker.flush()
+        if onCommitted == nil {
+            _ = onUpdate(self)
+        }
     }
 }
 
@@ -239,6 +263,31 @@ private func rollbackHookCallback(context: UnsafeMutableRawPointer?) {
     guard let context else { return }
     let connection = Unmanaged<SQLConnection>.fromOpaque(context).takeUnretainedValue()
     connection.onRollback()
+}
+
+// C-style function for update callback
+///
+/// This function is registered with SQLite as a C-style callback for update
+/// events (INSERT, UPDATE, DELETE). It records the affected table name in
+/// the connection's `changeTracker`.
+///
+/// - Parameters:
+///   - context: An opaque pointer to the `Connection` instance.
+///   - operation: The SQLite operation code (SQLITE_INSERT, SQLITE_UPDATE, SQLITE_DELETE).
+///   - database: The database name (unused, typically "main").
+///   - table: The table name that was modified.
+///   - rowid: The rowid of the affected row.
+private func updateHookCallback(
+    context: UnsafeMutableRawPointer?,
+    operation: Int32,
+    database: UnsafePointer<CChar>?,
+    table: UnsafePointer<CChar>?,
+    rowid: sqlite3_int64
+) {
+    guard let context, let table else { return }
+    let connection = Unmanaged<SQLConnection>.fromOpaque(context).takeUnretainedValue()
+    let tableName = String(cString: table)
+    connection.changeTracker.record(table: tableName)
 }
 
 extension SQLConnection {

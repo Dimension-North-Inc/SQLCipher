@@ -55,7 +55,8 @@ let package = Package(
                 .headerSearchPath("include"),
             ],
             linkerSettings: [
-                .linkedFramework("Security")
+                .linkedFramework("Security"),
+                .linkedFramework("CloudKit")
             ]
         ),
 

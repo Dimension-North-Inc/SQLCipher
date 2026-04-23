@@ -730,6 +730,120 @@ struct ContentView: View {
 }
 ```
 
+### CloudKit Sync
+
+`SQLCipher` supports automatic CloudKit synchronization for both standard database tables and `SQLCipherStore` substates. Sync is table-oriented: each synced table becomes one CloudKit record. The sync engine is actor-isolated, debounces local changes (default 2s), and suppresses outbound sync while applying remote changes to avoid sync loops.
+
+#### Configuring Sync
+
+Call `configureSync(_:)` after initializing your database. Use `.mirrorAll` to sync all configured tables, or `.mirror(tables:)` for specific tables:
+
+```swift
+let db = try SQLCipher(path: dbPath, key: encryptionKey)
+
+// Mirror all user tables (configure per-table strategies afterward)
+db.configureSync(.mirrorAll)
+
+// Or mirror only specific tables with default snapshot strategy
+db.configureSync(.mirror(tables: ["users", "orders"]))
+```
+
+Add individual tables with a specific sync strategy:
+
+```swift
+// Snapshot: full table export on every change (simple, default)
+db.addSyncedTable("products", strategy: .snapshot)
+
+// Delta: row-level diffs keyed by primary key (efficient for large tables)
+db.addSyncedTable("events", strategy: .delta(primaryKey: "event_id"))
+
+// Substate-aware: for SQLCipherStore's stored_substates table
+// Only changed substates are synced
+```
+
+#### Enabling Store Sync
+
+If you use `SQLCipherStore`, call `enableSync()` after configuring the database:
+
+```swift
+let store = SQLCipherStore(db: db, state: initialState)
+store.enableSync()  // Registers stored_substates with .substateAware strategy
+```
+
+#### Sync Strategies
+
+| Strategy | Best For | Behavior |
+|----------|----------|----------|
+| `.snapshot` | Small to medium tables | Exports the entire table as JSON on every sync |
+| `.delta(primaryKey:)` | Large tables | Tracks row checksums and syncs only changed/deleted rows |
+| `.substateAware` | `stored_substates` | Syncs only substates that changed since the last sync |
+
+#### Conflict Resolution
+
+The default conflict policy is `.lastWriteWins`. You can customize this in the sync configuration:
+
+```swift
+let config = SyncConfiguration(
+    tableConfigs: [
+        "users": TableSyncConfig(strategy: .snapshot),
+        "events": TableSyncConfig(strategy: .delta(primaryKey: "event_id"))
+    ],
+    conflictPolicy: .remoteWins,  // or .localWins, .lastWriteWins
+    debounceInterval: .seconds(2)
+)
+db.configureSync(config)
+```
+
+#### Handling Remote Notifications
+
+Register for push notifications and forward CloudKit notifications to the sync engine:
+
+```swift
+func application(
+    _ application: UIApplication,
+    didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+) async {
+    await SQLCipherCloudKitSyncEngine.shared.handleRemoteNotification(
+        userInfo: userInfo as! [String: Any]
+    )
+    completionHandler(.newData)
+}
+```
+
+#### Account Status
+
+Verify that the user is signed into iCloud before enabling sync:
+
+```swift
+let canSync = await SQLCipherCloudKitSyncEngine.shared.verifyAccountStatus()
+if !canSync {
+    // Prompt user to sign into iCloud
+}
+```
+
+#### CloudKit Record Structure
+
+Sync uses the **private CloudKit database** with a custom zone named `SQLCipherSync`:
+
+- **Record type**: `SQLTable_<tablename>`
+- **Record name**: `sqlcipher:<tablename>`
+- **Zone**: `SQLCipherSync`
+- **Fields**:
+  - `tableData` (snapshot strategy): JSON-encoded table rows
+  - `deltaData` (delta strategy): JSON with changed rows and deleted primary keys
+  - `substateData` (substate strategy): Base64-encoded substate dictionary
+  - `schemaHash`: SHA-256 of the table's CREATE statement
+  - `rowCount`: Number of rows in the table
+  - `lastModified`: Client-side modification timestamp
+
+#### Sync Behavior Notes
+
+- **Lightweight hooks**: Local changes are detected via `sqlite3_update_hook` with zero SQL parsing overhead.
+- **Debounced outbound sync**: Changes are batched and synced after the configured debounce interval.
+- **No sync loops**: An `isApplyingRemote` flag prevents local change notifications from triggering outbound sync while inbound changes are being applied.
+- **Graceful errors**: CloudKit errors are logged and retried; sync never crashes the app.
+
 ## Migration and Upgrades
 
 When upgrading to new versions of this package, review the release notes for any breaking changes or migration requirements. Database files created with older versions remain compatible with newer versions, but you should maintain backups before performing upgrades in production environments.
