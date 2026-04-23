@@ -21,7 +21,7 @@ public final class SQLCipher: @unchecked Sendable {
     public let path: String
     
     /// Separate connections for read and write operations.
-    public let reader, writer: SQLConnection
+    public private(set) var reader, writer: SQLConnection
     
     /// A subject that publishes the set of changed table names whenever the
     /// database is updated, allowing observers to be notified of changes.
@@ -65,15 +65,80 @@ public final class SQLCipher: @unchecked Sendable {
     
     /// Resets the database encryption with a new encryption key.
     ///
-    /// If `nil` or an empty string is passed as the new key,
-    /// database encryption will be removed.
+    /// This method symmetrically supports all encryption state transitions:
+    /// - Encrypted → Encrypted (different key): fast in-place rekey
+    /// - Plaintext → Encrypted: `sqlcipher_export` migration
+    /// - Encrypted → Plaintext: `sqlcipher_export` migration
+    /// - Plaintext → Plaintext: no-op
     ///
     /// - Parameter key: The new encryption key. Pass `nil` or an empty
-    ///   string to remove encryption.
-    /// - Throws: An `SQLiteError` if the rekeying operation fails.
+    ///   string for a plaintext database.
+    /// - Throws: An `SQLiteError` if the operation fails.
     public func resetKey(to key: String?) throws {
-        try self.writer.resetKey(key)
-        try self.reader.resetKey(key)
+        let newKey = key ?? ""
+        let targetEncrypted = !newKey.isEmpty
+        let currentlyEncrypted = self.isEncrypted
+        
+        // No change in encryption state or key
+        if currentlyEncrypted == targetEncrypted {
+            if targetEncrypted {
+                // Fast path: rekey in-place
+                try self.writer.resetKey(key)
+                try self.reader.resetKey(key)
+            }
+            return
+        }
+        
+        // In-memory databases don't support file-based migration
+        guard path != ":memory:" else {
+            throw SQLiteError.general(
+                code: SQLITE_MISUSE,
+                message: "In-memory databases do not support encryption state migration. "
+                       + "Create the database with the desired key from the start."
+            )
+        }
+        
+        // Migration path: sqlcipher_export to a temp file, then swap
+        try migrateEncryptionState(to: newKey)
+    }
+    
+    private func migrateEncryptionState(to newKey: String) throws {
+        let tempPath = path + ".migration-\(UUID().uuidString)"
+        let escapedTemp = tempPath.replacingOccurrences(of: "'", with: "''")
+        let escapedKey = newKey.replacingOccurrences(of: "'", with: "''")
+        let attachKey = newKey.isEmpty ? "''" : "'\(escapedKey)'"
+        
+        // Export current database to temp file with target encryption state
+        try writer.exec("ATTACH DATABASE '\(escapedTemp)' AS migration_db KEY \(attachKey);")
+        try writer.exec("SELECT sqlcipher_export('migration_db');")
+        try writer.exec("DETACH DATABASE migration_db;")
+        
+        // Close both connections so the file can be swapped
+        sqlite3_close_v2(writer.db)
+        sqlite3_close_v2(reader.db)
+        
+        // Atomic swap: original → backup, temp → original, delete backup
+        let fm = FileManager.default
+        let backupPath = path + ".backup-\(UUID().uuidString)"
+        
+        do {
+            try fm.moveItem(atPath: path, toPath: backupPath)
+            try fm.moveItem(atPath: tempPath, toPath: path)
+            try fm.removeItem(atPath: backupPath)
+            
+            // Reopen both connections with the new key state
+            self.writer = try SQLConnection(path: path, key: newKey.isEmpty ? nil : newKey, role: .writer)
+            self.reader = try SQLConnection(path: path, key: newKey.isEmpty ? nil : newKey, role: .reader)
+            
+            // Reinstall the commit hook on the new writer
+            self.writer.onCommitted = { [unowned self] tables in self.onUpdate(tables) }
+        } catch {
+            // Attempt recovery if the original was moved to backup
+            if fm.fileExists(atPath: backupPath) && !fm.fileExists(atPath: path) {
+                try? fm.moveItem(atPath: backupPath, toPath: path)
+            }
+            throw error
+        }
     }
 }
 

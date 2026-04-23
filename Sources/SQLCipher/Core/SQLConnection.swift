@@ -70,7 +70,8 @@ public final class SQLConnection: @unchecked Sendable {
     }
     
     // SQLite database connection
-    let db: OpaquePointer
+    var db: OpaquePointer
+    let path: String
     let queue: DispatchQueue
     
     public  var onUpdate: (SQLConnection) -> SQLErrorCode
@@ -92,6 +93,7 @@ public final class SQLConnection: @unchecked Sendable {
         
         self.queue = role.queue
         self.onUpdate = role.onUpdate
+        self.path = path
         
         var db: OpaquePointer?
         try checked(sqlite3_open_v2(path, &db, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE, nil), on: db)
@@ -103,9 +105,9 @@ public final class SQLConnection: @unchecked Sendable {
         
         self.db = db
 
-        // Set the encryption key if provided
+        // Set the encryption key if provided, and always verify accessibility.
+        // This catches silent key mismatches (wrong key or missing key on encrypted DB).
         if !key.isEmpty {
-            // Verify that the database can be accessed
             do {
                 try setKey(key)
                 try verifyAccessibility()
@@ -113,8 +115,15 @@ public final class SQLConnection: @unchecked Sendable {
                 sqlite3_close_v2(db)
                 throw error
             }
-
             isEncrypted = true
+        } else {
+            // No key provided — verify the database is actually plaintext
+            do {
+                try verifyAccessibility()
+            } catch {
+                sqlite3_close_v2(db)
+                throw error
+            }
         }
 
         // Install commit, rollback, and update hooks
@@ -124,6 +133,40 @@ public final class SQLConnection: @unchecked Sendable {
     
     deinit {
         sqlite3_close_v2(db)
+    }
+    
+    /// Reopens the database connection with a new encryption key.
+    ///
+    /// This closes the existing connection and reopens it at the same path,
+    /// allowing the encryption state to change.
+    ///
+    /// - Parameter key: The new encryption key, or `nil`/empty for plaintext.
+    /// - Throws: An `SQLiteError` if reopening fails.
+    package func reopen(key: String?) throws {
+        let key = key ?? ""
+        sqlite3_close_v2(self.db)
+        
+        var newDb: OpaquePointer?
+        try checked(sqlite3_open_v2(self.path, &newDb, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE, nil), on: newDb)
+        
+        guard let db = newDb else {
+            throw SQLiteError.general(code: SQLITE_ERROR, message: "Failed to reopen database connection")
+        }
+        
+        self.db = db
+        
+        if !key.isEmpty {
+            do {
+                try setKey(key)
+                try verifyAccessibility()
+            } catch {
+                sqlite3_close_v2(db)
+                throw error
+            }
+            isEncrypted = true
+        } else {
+            isEncrypted = false
+        }
     }
 
     /// Sets the encryption key for the database connection.

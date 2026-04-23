@@ -120,7 +120,7 @@ import Foundation
         }
     }
 
-    @Test func testEncryptExistingDatabaseThrows() throws {
+    @Test func testConnectionResetKeyOnlySupportsRekeying() throws {
         let path = tempDBPath()
         // Create an initially unencrypted database with data
         let db = try SQLConnection(path: path, role: .writer)
@@ -128,7 +128,8 @@ import Foundation
         try db.exec("INSERT INTO encrypt_test (id) VALUES (42)")
         #expect(db.isEncrypted == false)
 
-        // resetKey on an unencrypted database should throw a clear error
+        // SQLConnection.resetKey on an unencrypted database throws —
+        // encryption state migration is handled at the SQLCipher level
         #expect(throws: SQLiteError.self) {
             try db.resetKey("new-secret")
         }
