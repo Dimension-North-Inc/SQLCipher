@@ -179,14 +179,6 @@ extension SQLCipherStore {
                             updates = updates[0...current] + [.partial(new)]
                             current += 1
                         }
-                    
-                    case .partial:
-                        if updates[current].type == .partial {
-                            updates[current] = .partial(new)
-                        } else {
-                            updates = updates[0...current] + [.partial(new)]
-                            current += 1
-                        }
                     }
                     
                     // 4. Commit transaction and update state

@@ -74,7 +74,7 @@ import Foundation
         struct IncrementAction: SQLAction {
             typealias State = SimpleState
             var type: UpdateType { .undoable }
-            func update(state: inout SimpleState, db: SQLConnection) throws {
+            func update(_ state: inout SimpleState, db: SQLConnection) throws {
                 state.counter += 1
             }
         }
@@ -97,7 +97,7 @@ import Foundation
         struct ResetAction: SQLAction {
             typealias State = SimpleState
             var type: UpdateType { .critical }
-            func update(state: inout SimpleState, db: SQLConnection) throws {
+            func update(_ state: inout SimpleState, db: SQLConnection) throws {
                 state.counter = 0
             }
         }

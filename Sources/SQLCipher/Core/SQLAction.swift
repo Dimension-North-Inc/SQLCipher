@@ -22,7 +22,7 @@ public protocol SQLAction<State>: Sendable {
     ///   - state: The current state, passed as an `inout` parameter for modification.
     ///   - db: An `SQLConnection` for database operations, such as querying or writing.
     /// - Throws: An error if the update fails (e.g., due to database issues).
-    func update(state: inout State, db: SQLConnection) throws
+    func update(_ state: inout State, db: SQLConnection) throws
     
     /// Specifies the update's persistence and undo behavior.
     /// Defaults to `.partial` if not overridden.
@@ -59,7 +59,7 @@ extension SQLCipherStore {
      */
     public func dispatch(_ action: any SQLAction<State>) async {
         await update(action.type) { state, db in
-            try action.update(state: &state, db: db)
+            try action.update(&state, db: db)
         }
     }
 
@@ -76,7 +76,7 @@ extension SQLCipherStore {
     public func dispatch(_ action: any SQLAction<State>) {
         Task { [weak self] in
             await self?.update(action.type) { state, db in
-                try action.update(state: &state, db: db)
+                try action.update(&state, db: db)
             }
         }
     }

@@ -631,7 +631,7 @@ struct IncrementCounterAction: SQLAction {
         .undoable
     }
     
-    func update(state: inout AppState, db: SQLConnection) throws {
+    func update(_ state: inout AppState, db: SQLConnection) throws {
         state.counter += amount
         
         // Actions can also perform database operations
@@ -648,7 +648,7 @@ struct ChangeThemeAction: SQLAction {
     
     typealias State = AppState
     
-    func update(state: inout AppState, db: SQLConnection) throws {
+    func update(_ state: inout AppState, db: SQLConnection) throws {
         state.preferences.theme = theme
     }
 }
@@ -675,7 +675,7 @@ struct ResetStoreAction: SQLAction {
         .critical  // Cannot be undone
     }
     
-    func update(state: inout AppState, db: SQLConnection) throws {
+    func update(_ state: inout AppState, db: SQLConnection) throws {
         state.counter = 0
         state.userName = "Guest"
         
