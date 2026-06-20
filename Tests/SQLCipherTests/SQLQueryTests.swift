@@ -89,6 +89,16 @@ import Foundation
         #expect(result4.affectedRows == 1)
     }
 
+    @Test func testStepErrorThrows() throws {
+        let db = try SQLCipher(path: tempDBPath())
+        try db.writer.exec("CREATE TABLE unique_test (id INTEGER PRIMARY KEY, name TEXT UNIQUE)")
+        try db.writer.execute("INSERT INTO unique_test (name) VALUES ('Alice')")
+
+        #expect(throws: SQLiteError.self) {
+            try db.writer.execute("INSERT INTO unique_test (name) VALUES ('Alice')")
+        }
+    }
+
     @Test func testDynamicMemberLookup() throws {
         let db = try SQLCipher(path: tempDBPath())
         try db.writer.exec("CREATE TABLE dynamic_test (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")

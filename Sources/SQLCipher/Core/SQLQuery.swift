@@ -487,9 +487,12 @@ public final class SQLPreparedQuery<Params> {
             
             // Collect rows
             var rows: [SQLRow] = []
-            while sqlite3_step(stmt) == SQLITE_ROW {
+            var stepResult = sqlite3_step(stmt)
+            while stepResult == SQLITE_ROW {
                 rows.append(SQLRow(statement: stmt))
+                stepResult = sqlite3_step(stmt)
             }
+            try checked(stepResult, on: connection.db)
             
             // Get result metadata
             let count = sqlite3_changes(connection.db)
