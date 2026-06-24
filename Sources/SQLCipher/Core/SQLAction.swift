@@ -37,7 +37,11 @@ extension SQLAction {
 
 /// Defines the persistence and undo behavior of an `SQLAction`.
 public enum UpdateType: Sendable {
-    /// An unpersisted update - in-memory only (e.g., slider drag, intermediate state)
+    /// An unpersisted update - in-memory only (e.g., slider drag, intermediate state).
+    ///
+    /// Partial updates receive the store's read-only database connection. They do
+    /// not open a writer transaction or persist substates until a later
+    /// `.undoable` update folds the partial state into the undo stack.
     case partial
     /// An immediately persisted update which can be undone to some earlier state.
     case undoable

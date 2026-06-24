@@ -119,12 +119,11 @@ extension SQLCipherStore {
         _ type: UpdateType,
         transform: @Sendable @escaping (inout State, SQLConnection) throws -> T
     ) async throws -> T {
-        let writer = db.writer  // This can remain outside as it's not state-dependent
-        
         let result: Result<T, Error> = await withCheckedContinuation { continuation in
             updateQueue.async {
                 // Capture necessary state inside the block as mutable copies where needed
                 let db              = self.db
+                let writer          = db.writer
 
                 let old             = self.state
                 var new             = old
@@ -136,6 +135,23 @@ extension SQLCipherStore {
                 let levelsOfUndo    = self.levelsOfUndo
 
                 do {
+                    if case .partial = type {
+                        let value = try transform(&new, db.reader)
+                        if updates[current].type == .partial {
+                            updates[current] = .partial(new)
+                        } else {
+                            updates = updates[0...current] + [.partial(new)]
+                            current += 1
+                        }
+
+                        self.updates = updates
+                        self.current = current
+                        self.error = nil
+
+                        continuation.resume(returning: .success(value))
+                        return
+                    }
+
                     // 1. Begin transaction
                     try writer.begin()
                     // 2. Call the transform closure
@@ -172,13 +188,7 @@ extension SQLCipherStore {
                         updates = [.undoable(new)]
                         current = 0
                     case .partial:
-                        // Don't persist pending updates - they remain in-memory only
-                        if updates[current].type == .partial {
-                            updates[current] = .partial(new)
-                        } else {
-                            updates = updates[0...current] + [.partial(new)]
-                            current += 1
-                        }
+                        preconditionFailure("Partial updates return before opening a database transaction")
                     }
                     
                     // 4. Commit transaction and update state

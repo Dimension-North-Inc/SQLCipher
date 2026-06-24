@@ -421,18 +421,13 @@ print("Counter: \(store.counter)")  // Same as above
 
 #### Updating State
 
-Updates are transactional and can be undoable, pending, critical, or partial:
+Updates can be undoable, critical, or partial:
 
 ```swift
 // Undoable update - can be undone/redone
 await store.update(.undoable) { state, db in
     state.counter += 1
     state.userName = "Alice"
-}
-
-// Pending update - persisted but part of a larger undoable group
-await store.update(.pending) { state, db in
-    state.preferences.theme = "dark"
 }
 
 // Critical update - forms a new baseline, cannot be undone
@@ -443,6 +438,13 @@ await store.update(.critical) { state, db in
 // Partial update - not persisted, part of an in-progress operation
 await store.update(.partial) { state, db in
     state.counter += 1  // Temporary change
+}
+
+// Partial updates receive a read-only database connection.
+await store.update(.partial) { state, db in
+    state.sliderValue = 0.75
+    // OK: read supporting data from db if needed.
+    // Writes throw because db is the store's reader connection.
 }
 
 // Fire-and-forget update (doesn't await completion)
@@ -470,6 +472,11 @@ do {
     print("Update failed: \(error)")
 }
 ```
+
+Partial updates are in-memory store updates. They receive the store's read-only
+database connection, do not open a writer transaction, and do not persist
+substates until a later `.undoable` update folds the partial state into the undo
+stack. Use `.undoable` or `.critical` for updates that mutate the database.
 
 #### Undo/Redo Support
 

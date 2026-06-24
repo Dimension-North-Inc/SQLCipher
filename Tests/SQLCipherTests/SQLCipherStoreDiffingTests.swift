@@ -29,6 +29,10 @@ import Foundation
         var preferences: Preferences
     }
 
+    final class StatementTrace {
+        var statements: [String] = []
+    }
+
     func tempDBPath() -> String {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
@@ -174,5 +178,51 @@ import Foundation
         let db2 = try SQLCipher(path: path)
         let store2 = makeStore(db: db2)
         #expect(store2.state.address.zip == "90210")
+    }
+
+    @Test func testPartialUpdateDoesNotExecuteWriterTransactionStatements() async throws {
+        let path = tempDBPath()
+        let db = try SQLCipher(path: path)
+        let store = makeStore(db: db)
+        let trace = StatementTrace()
+        sqlite3_trace_v2(
+            db.writer.db,
+            UInt32(SQLITE_TRACE_STMT),
+            { _, context, statement, _ in
+                guard let context, let statement else {
+                    return 0
+                }
+
+                let trace = Unmanaged<StatementTrace>
+                    .fromOpaque(context)
+                    .takeUnretainedValue()
+                let sql = sqlite3_sql(OpaquePointer(statement)).map(String.init(cString:)) ?? ""
+                trace.statements.append(sql)
+                return 0
+            },
+            Unmanaged.passUnretained(trace).toOpaque()
+        )
+
+        await store.update(.partial) { state, _ in
+            state.address.zip = "00000"
+        }
+
+        #expect(store.state.address.zip == "00000")
+        #expect(trace.statements.isEmpty)
+    }
+
+    @Test func testPartialUpdateReceivesReadOnlyDatabaseConnection() async throws {
+        let path = tempDBPath()
+        let db = try SQLCipher(path: path)
+        let store = makeStore(db: db)
+
+        await #expect(throws: (any Error).self) {
+            try await store.tryUpdate(.partial) { state, db in
+                state.address.zip = "00000"
+                try db.exec("CREATE TABLE partial_write_test (id INTEGER PRIMARY KEY)")
+            }
+        }
+
+        #expect(store.state.address.zip == "90210")
     }
 }
